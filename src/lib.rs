@@ -104,7 +104,7 @@ mod tests {
 
         println!("{:#?}", Lox::attrs());
 
-        let mut L: Lox = Lox::default();
+        let mut L = Lox::default();
 
         println!("{:#?}", L);
 
