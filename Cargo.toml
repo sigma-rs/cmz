@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 cmzcred_derive = { path = "cmzcred_derive" }
-curve25519-dalek = "4"
+curve25519-dalek = { version = "4", features = [ "group" ] }
+ff = "0.13"
+group = "0.13"

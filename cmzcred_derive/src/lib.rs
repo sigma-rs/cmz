@@ -13,9 +13,10 @@ the CMZCredential trait for the declared credential.
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data,DataStruct,Fields,FieldsNamed,Ident};
+use syn::{Data,DataStruct,DeriveInput,Fields,FieldsNamed,Ident};
+use darling::FromDeriveInput;
 
-fn impl_cmzcred_derive(ast: &syn::DeriveInput) -> TokenStream {
+fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStream {
     // Ensure that CMZCred is derived on a struct and not something else
     // (like an enum)
     let Data::Struct(DataStruct{struct_token: _,
@@ -45,7 +46,10 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput) -> TokenStream {
 
     // Output the CMZCredential trail implementation
     let gen = quote! {
-        impl CMZCredential for #name {
+        impl CMZCredential<#group_ident> for #name {
+            type Scalar = <#group_ident as Group>::Scalar;
+            type Point = #group_ident;
+
             fn attrs() -> Vec<&'static str> {
                 vec![
                     #( #attrs, )*
@@ -56,14 +60,14 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput) -> TokenStream {
                 return #num_attrs;
             }
 
-            fn attr(&self, attrname: &str) -> &Option<Scalar> {
+            fn attr(&self, attrname: &str) -> &Option<Self::Scalar> {
                 match attrname {
                     #( #attrs => &self.#idents, )*
                     _ => panic!(#errmsg),
                 }
             }
 
-            fn attr_mut(&mut self, attrname: &str) -> &mut Option<Scalar> {
+            fn attr_mut(&mut self, attrname: &str) -> &mut Option<Self::Scalar> {
                 match attrname {
                     #( #attrs => &mut self.#idents, )*
                     _ => panic!(#errmsg),
@@ -74,12 +78,22 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput) -> TokenStream {
     gen.into()
 }
 
-#[proc_macro_derive(CMZCred)]
+#[derive(FromDeriveInput)]
+#[darling(attributes(cmzcred_group))]
+struct GroupIdent {
+    group: Ident,
+}
+
+#[proc_macro_derive(CMZCred, attributes(cmzcred_group))]
 pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
     // Construct a representation of Rust code as a syntax tree
     // that we can manipulate
-    let ast = syn::parse(input).unwrap();
+    let ast: DeriveInput = syn::parse(input).unwrap();
+
+    // Get the cmzcred_group(group = G) attribute
+    let group_ident = GroupIdent::from_derive_input(&ast)
+        .expect("missing group parameter to cmzcred_group attribute");
 
     // Build the trait implementation
-    impl_cmzcred_derive(&ast)
+    impl_cmzcred_derive(&ast, &group_ident.group)
 }
