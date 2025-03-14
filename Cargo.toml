@@ -1,0 +1,8 @@
+[package]
+name = "cmz"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cmzcred_derive = { path = "cmzcred_derive" }
+curve25519-dalek = "4"

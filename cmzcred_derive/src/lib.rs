@@ -1,0 +1,85 @@
+/*! The implementation of the CMZCred derive.
+
+This derive should not be explicitly used by a programmer using a CMZ
+credential.  Instead, a CMZ credential should be declared with the
+
+`CMZ!{ Name: attr1, attr2, attr3 }`
+
+macro.  That macro will internally expand to a struct annotated with
+this CMZCred derive.  This derive will output the implementation of
+the CMZCredential trait for the declared credential.
+
+*/
+
+use proc_macro::TokenStream;
+use quote::quote;
+use syn::{Data,DataStruct,Fields,FieldsNamed,Ident};
+
+fn impl_cmzcred_derive(ast: &syn::DeriveInput) -> TokenStream {
+    // Ensure that CMZCred is derived on a struct and not something else
+    // (like an enum)
+    let Data::Struct(DataStruct{struct_token: _,
+        fields: Fields::Named(FieldsNamed{brace_token: _, ref named}),
+        semi_token: _}) = ast.data else {
+        panic!("CMZCred derived on a non-struct");
+    };
+    // attrs and idents are each vectors of the names of the attributes
+    // of the credential (not including the MAC).  attrs stores the
+    // names as Strings, while idents stores them as Idents.
+    let mut attrs = Vec::<String>::new();
+    let mut idents = Vec::<&Ident>::new();
+    for n in named {
+        let Some(ref ident) = n.ident else {
+            panic!("Missing attribute name in CMZCred");
+        };
+        let id_str = ident.to_string();
+        if id_str != String::from("MAC") {
+            attrs.push(id_str);
+            idents.push(ident);
+        }
+    }
+    let num_attrs = attrs.len();
+    let name = &ast.ident;
+    let errmsg = format!("Invalid attribute name for {} CMZ credential",
+        name);
+
+    // Output the CMZCredential trail implementation
+    let gen = quote! {
+        impl CMZCredential for #name {
+            fn attrs() -> Vec<&'static str> {
+                vec![
+                    #( #attrs, )*
+                ]
+            }
+
+            fn num_attrs() -> usize {
+                return #num_attrs;
+            }
+
+            fn attr(&self, attrname: &str) -> &Option<Scalar> {
+                match attrname {
+                    #( #attrs => &self.#idents, )*
+                    _ => panic!(#errmsg),
+                }
+            }
+
+            fn attr_mut(&mut self, attrname: &str) -> &mut Option<Scalar> {
+                match attrname {
+                    #( #attrs => &mut self.#idents, )*
+                    _ => panic!(#errmsg),
+                }
+            }
+        }
+    };
+    gen.into()
+}
+
+#[proc_macro_derive(CMZCred)]
+pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
+    // Construct a representation of Rust code as a syntax tree
+    // that we can manipulate
+    let ast = syn::parse(input).unwrap();
+
+    // Build the trait implementation
+    impl_cmzcred_derive(&ast)
+}
