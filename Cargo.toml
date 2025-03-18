@@ -5,6 +5,13 @@ edition = "2021"
 
 [dependencies]
 cmzcred_derive = { path = "cmzcred_derive" }
-curve25519-dalek = { version = "4", features = [ "group" ] }
+curve25519-dalek = { version = "4", features = [ "group", "rand_core", "digest" ] }
 ff = "0.13"
 group = "0.13"
+lazy_static = "1"
+generic_static = "0.2"
+rand_core = "0.6"
+
+[dev-dependencies]
+rand = "0.8"
+sha2 = "0.10"

@@ -2,23 +2,179 @@
 // lowercase letters
 #![allow(non_snake_case)]
 
+pub use cmzcred_derive::CMZCred;
+use core::any::Any;
 use ff::PrimeField;
-use group::Group;
+use generic_static::StaticTypeMap;
+use group::prime::PrimeGroup;
+use group::{Group, WnafBase, WnafScalar};
+use lazy_static::lazy_static;
+use rand_core::RngCore;
 
 /// The CMZMac struct represents a MAC on a CMZ credential.
 #[derive(Copy, Clone, Debug, Default)]
-pub struct CMZMac<G: Group> {
+pub struct CMZMac<G: PrimeGroup> {
     pub P: G,
     pub Q: G,
 }
 
+/// The CMZPrivkey struct represents a CMZ private key
+#[derive(Clone, Debug, Default)]
+pub struct CMZPrivkey<G: PrimeGroup> {
+    pub x0tilde: <G as Group>::Scalar,
+    pub x0: <G as Group>::Scalar,
+    // The elements of x correspond to the attributes of the credential
+    pub x: Vec<<G as Group>::Scalar>,
+}
+
+/// The CMZPubkey struct represents a CMZ public key
+#[derive(Clone, Debug, Default)]
+pub struct CMZPubkey<G: PrimeGroup> {
+    pub X0: Option<G>,
+    // The elements of X correspond to the attributes of the credential
+    pub X: Vec<G>,
+}
+
+// The size of the WNAF windows.  Larger sizes take more memory, but
+// result in faster multiplications.
+const WNAF_SIZE: usize = 6;
+
+// A struct (generic over G) holding the two CMZ bases, and their Wnaf
+// basepoint tables
+#[derive(Clone)]
+struct CMZBasepoints<G: Group> {
+    A: G,
+    B: G,
+    A_TABLE: WnafBase<G, WNAF_SIZE>,
+    B_TABLE: WnafBase<G, WNAF_SIZE>,
+}
+
+impl<G: Group> CMZBasepoints<G> {
+    fn init(generator_A: G) -> Self {
+        let A = generator_A;
+        let B = G::generator();
+        let A_TABLE = WnafBase::new(A);
+        let B_TABLE = WnafBase::new(B);
+        CMZBasepoints {
+            A,
+            B,
+            A_TABLE,
+            B_TABLE,
+        }
+    }
+
+    fn mulA(&self, s: &G::Scalar) -> G {
+        let wnaf_s = WnafScalar::<G::Scalar, WNAF_SIZE>::new(&s);
+        &self.A_TABLE * &wnaf_s
+    }
+
+    fn mulB(&self, s: &G::Scalar) -> G {
+        let wnaf_s = WnafScalar::<G::Scalar, WNAF_SIZE>::new(&s);
+        &self.B_TABLE * &wnaf_s
+    }
+}
+
+// What's going on here needs some explanation.  For each group G, we
+// want to pre-compute the WnafBase tables in a CMZBasepoints<G> struct,
+// and we want that pre-computed struct to remain globally accessible.
+// So ideally, we'd just have a generic static CMZBasepoints<G> struct,
+// and instantiate it once for each G that we use.
+//
+// The tricky bit is that we don't know what group(s) G the programmer
+// (the person using this cmz crate) will end up using, and Rust doesn't
+// support generic statics.
+//
+// So what we'd like is a non-generic static _map_ that maps a group
+// type G to the precomputed CMZBasepoints<G> struct.  But types aren't
+// values that can be mapped by a normal HashMap.  Luckily, there's a
+// generic_static crate that provides a StaticTypeMap that has the
+// ability to map types to objects.
+//
+// However, all of those *mapped-to* objects have to all be of the same
+// type, whereas we want the type G to map to a struct of type
+// CMZBasepoints<G>, which is different for each value of G.
+//
+// So we make a non-generic trait CMZBP that all instantiations of
+// CMZBasepoints<G> implement (for all group types G), and have the
+// StaticTypeMap map each type G to a trait object Box<dyn CMZBP>.
+//
+// Then to read the CMZBasepoints<G> back out, we look up the trait
+// object in the StaticTypeMap, yielding a Box<dyn CMZBP>.  We now need
+// to downcast this trait object to the concrete type CMZBasepoints<G>,
+// for a _specific_ G.  Rust provides downcasting, but only from &dyn Any
+// to the original concrete type, not from other things like &dyn CMZBP.
+// So first we need to upcast the trait object to &dyn Any, which we do
+// with an "as_any()" function in the CMZBP trait, and then downcast the
+// result to a CMZBasepoints<G> struct.
+//
+// The up/down casting pattern is from
+// https://stackoverflow.com/questions/33687447/how-to-get-a-reference-to-a-concrete-type-from-a-trait-object
+
+// Static objects have to be Sync + Send, so enforce that as part of the
+// CMXBP trait
+trait CMZBP: Sync + Send {
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl<G: Group> CMZBP for CMZBasepoints<G> {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+// The StaticTypeMap mapping group types G to trait objects Box<dyn CMZBP>
+lazy_static! {
+    static ref basepoints_map: StaticTypeMap<Box<dyn CMZBP>> = StaticTypeMap::new();
+}
+
+/// For a given group type G, if bp is Some(b), then load the mapping
+/// from G to b into the basepoints_map.  (If a mapping from G already
+/// exists, the old one will be kept and the new one ignored.)  Whether
+/// bp is Some(b) or None, this function returns the (possibly new)
+/// target of the basepoints_map, as a &'static CMZBasepoints<G>.
+fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> {
+    match bp {
+        Some(b) => basepoints_map.call_once::<Box<dyn CMZBP>, _>(|| Box::new(b.clone())),
+        None => {
+            basepoints_map.call_once::<Box<dyn CMZBP>, _>(|| panic!("basepoints uninitialized"))
+        }
+    }
+    .as_any()
+    .downcast_ref::<CMZBasepoints<G>>()
+    .unwrap()
+}
+
+/// CMZ credentials require two generators, A and B.  B is the
+/// "standard" generator.  A can be any other generator (that is, any
+/// other non-identity point in a prime-order group), but it is required
+/// that no one know the discrete log between A and B.  So you can't
+/// generate A by multiplying B by some scalar, for example.  If your
+/// group has a hash_from_bytes function, then pass
+/// hash_from_bytes::<Sha512>(b"CMZ Generator A").  Otherwise, you're
+/// possibly on your own to generate an appropriate generator A.
+/// Everyone who uses a given credential type with a given group will
+/// need to use the same A.  You need to call this before doing any
+/// operations with a credential.
+pub fn cmz_group_init<G: PrimeGroup>(generator_A: G) {
+    let bp = CMZBasepoints::<G>::init(generator_A);
+    load_bp(Some(bp));
+}
+
+/// Compute a public key from a private key
+pub fn cmz_privkey_to_pubkey<G: PrimeGroup>(privkey: &CMZPrivkey<G>) -> CMZPubkey<G> {
+    let bp = load_bp::<G>(None);
+    let X0: Option<G> = Some(bp.mulA(&privkey.x0tilde) + bp.mulB(&privkey.x0));
+    let X: Vec<G> = privkey.x.iter().map(|x| bp.mulA(x)).collect();
+    CMZPubkey { X0, X }
+}
+
 /// The CMZCredential trait implemented by all CMZ credential struct types.
-pub trait CMZCredential<G: Group> {
+pub trait CMZCredential<G: PrimeGroup> {
     /// The type of attributes for this credential
     type Scalar: PrimeField;
 
     /// The type of the coordinates of the MAC for this credential
-    type Point: Group;
+    type Point: PrimeGroup;
 
     /// Produce a vector of strings containing the names of the
     /// attributes of this credential.  (The MAC is not included.)
@@ -34,6 +190,27 @@ pub trait CMZCredential<G: Group> {
     /// Get a mutable reference to one of the attributes, specified by
     /// name as a string.
     fn attr_mut(&mut self, name: &str) -> &mut Option<Self::Scalar>;
+
+    /// Set the public key for this credential.
+    fn set_pubkey(&mut self, pubkey: &CMZPubkey<G>);
+
+    /// Get a copy of the public key for this credential.  If the public
+    /// key has not yet been set or computed, a pubkey with X0 == None
+    /// will be returned.
+    fn get_pubkey(&self) -> CMZPubkey<G>;
+
+    /// Set the private key for this credential.  The public key will
+    /// automatically be computed from the private key.
+    fn set_privkey(&mut self, privkey: &CMZPrivkey<G>);
+
+    /// Get a copy of the private key for this credential.  If the
+    /// private key has not yet been set, a privkey with an empty x
+    /// vector will be returned.
+    fn get_privkey(&self) -> CMZPrivkey<G>;
+
+    /// Generate random private and public keys for this credential
+    /// type.
+    fn gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<G>, CMZPubkey<G>);
 }
 
 /** The CMZ macro for declaring CMZ credentials.
@@ -47,10 +224,11 @@ of the listed attributes.  The attribute fields will be of type
 `Option<Scalar>`.  It will also automatically add a field called `MAC`
 of type `CMZMac`, and an implementation (via the `CMZCred` derive) of
 the `CMZCredential` trait.  The mathematical group used (the field for
-the values of the attributes and the group elements for the commitments
-and MAC components) is Group (which must satisfy the group::Group
-trait).  If "<Group>" is omitted, the macro will default to using a
-group called "G", which you can define, for example, as:
+the values of the attributes and the private key elements, and the group
+elements for the commitments, MAC components, and public key elements)
+is Group (which must satisfy the group::Group trait).  If "<Group>" is
+omitted, the macro will default to using a group called "G", which you
+can define, for example, as:
 
 use curve25519_dalek::ristretto::RistrettoPoint as G;
 
@@ -59,27 +237,33 @@ or:
 use curve25519_dalek::ristretto::RistrettoPoint;
 type G = RistrettoPoint;
 
+The group must implement the trait group::prime::PrimeGroup.
+
 */
 #[macro_export]
 macro_rules! CMZ {
     ( $name: ident < $G: ident > : $( $id: ident ),+ ) => {
-        #[derive(CMZCred,Copy,Clone,Debug,Default)]
+        #[derive(CMZCred,Clone,Debug,Default)]
         #[cmzcred_group(group = $G)]
         pub struct $name {
         $(
             pub $id: Option<<$G as Group>::Scalar>,
         )+
             pub MAC: CMZMac<$G>,
+            privkey: CMZPrivkey<$G>,
+            pubkey: CMZPubkey<$G>,
         }
     };
     ( $name: ident : $( $id: ident ),+ ) => {
-        #[derive(CMZCred,Copy,Clone,Debug,Default)]
+        #[derive(CMZCred,Clone,Debug,Default)]
         #[cmzcred_group(group = G)]
         pub struct $name {
         $(
             pub $id: Option<<G as Group>::Scalar>,
         )+
             pub MAC: CMZMac<G>,
+            privkey: CMZPrivkey<G>,
+            pubkey: CMZPubkey<G>,
         }
     };
 }
@@ -87,7 +271,6 @@ macro_rules! CMZ {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cmzcred_derive::CMZCred;
 
     #[test]
     fn lox_credential_test() {

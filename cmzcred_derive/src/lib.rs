@@ -13,7 +13,7 @@ the CMZCredential trait for the declared credential.
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data,DataStruct,DeriveInput,Fields,FieldsNamed,Ident};
+use syn::{Data,DataStruct,DeriveInput,Fields,FieldsNamed,Ident,Visibility};
 use darling::FromDeriveInput;
 
 fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStream {
@@ -25,8 +25,9 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
         panic!("CMZCred derived on a non-struct");
     };
     // attrs and idents are each vectors of the names of the attributes
-    // of the credential (not including the MAC).  attrs stores the
-    // names as Strings, while idents stores them as Idents.
+    // of the credential (not including the MAC and any non-public
+    // fields).  attrs stores the names as Strings, while idents stores
+    // them as Idents.
     let mut attrs = Vec::<String>::new();
     let mut idents = Vec::<&Ident>::new();
     for n in named {
@@ -34,9 +35,11 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
             panic!("Missing attribute name in CMZCred");
         };
         let id_str = ident.to_string();
-        if id_str != String::from("MAC") {
-            attrs.push(id_str);
-            idents.push(ident);
+        if let Visibility::Public(_) = n.vis {
+            if id_str != String::from("MAC") {
+                attrs.push(id_str);
+                idents.push(ident);
+            }
         }
     }
     let num_attrs = attrs.len();
@@ -44,7 +47,7 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
     let errmsg = format!("Invalid attribute name for {} CMZ credential",
         name);
 
-    // Output the CMZCredential trail implementation
+    // Output the CMZCredential trait implementation
     let gen = quote! {
         impl CMZCredential<#group_ident> for #name {
             type Scalar = <#group_ident as Group>::Scalar;
@@ -72,6 +75,42 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                     #( #attrs => &mut self.#idents, )*
                     _ => panic!(#errmsg),
                 }
+            }
+
+            fn set_pubkey(&mut self, pubkey: &CMZPubkey<Self::Point>) {
+                self.pubkey = pubkey.clone();
+            }
+
+            fn get_pubkey(&self) -> CMZPubkey<Self::Point> {
+                self.pubkey.clone()
+            }
+
+            fn set_privkey(&mut self, privkey: &CMZPrivkey<Self::Point>) {
+                self.pubkey = cmz_privkey_to_pubkey(&privkey);
+                self.privkey = privkey.clone();
+            }
+
+            fn get_privkey(&self) -> CMZPrivkey<Self::Point> {
+                self.privkey.clone()
+            }
+
+            fn gen_keys(rng: &mut impl RngCore) ->
+                    (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>) {
+                // Generate (num_attrs + 2) random scalars as the
+                // private key
+                let x0tilde: Self::Scalar =
+                    <Self::Scalar as ff::Field>::random(&mut *rng);
+                let x0: Self::Scalar =
+                    <Self::Scalar as ff::Field>::random(&mut *rng);
+                let x: Vec<Self::Scalar> = (0..Self::num_attrs())
+                    .map(|_| <Self::Scalar as ff::Field>::random(&mut *rng))
+                    .collect();
+                let privkey = CMZPrivkey { x0tilde, x0, x };
+
+                // Convert the private key to a public key
+                let pubkey = cmz_privkey_to_pubkey(&privkey);
+
+                (privkey, pubkey)
             }
         }
     };
