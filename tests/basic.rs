@@ -15,12 +15,9 @@ fn test_basic() {
     cmz_group_init(RistrettoPoint::hash_from_bytes::<Sha512>(
         b"CMZ Generator A",
     ));
-    let mut basic_cred = Basic::default();
-
-    println!("{:#?}", basic_cred);
 
     let (privkey, pubkey) = Basic::gen_keys(&mut rng);
-    basic_cred.set_privkey(&privkey);
+    let basic_cred = Basic::using_privkey(&privkey);
 
     println!("{:#?}", basic_cred);
 }

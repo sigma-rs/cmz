@@ -169,7 +169,10 @@ pub fn cmz_privkey_to_pubkey<G: PrimeGroup>(privkey: &CMZPrivkey<G>) -> CMZPubke
 }
 
 /// The CMZCredential trait implemented by all CMZ credential struct types.
-pub trait CMZCredential<G: PrimeGroup> {
+pub trait CMZCredential<G: PrimeGroup>
+where
+    Self: Default + Sized,
+{
     /// The type of attributes for this credential
     type Scalar: PrimeField;
 
@@ -192,7 +195,7 @@ pub trait CMZCredential<G: PrimeGroup> {
     fn attr_mut(&mut self, name: &str) -> &mut Option<Self::Scalar>;
 
     /// Set the public key for this credential.
-    fn set_pubkey(&mut self, pubkey: &CMZPubkey<G>);
+    fn set_pubkey(&mut self, pubkey: &CMZPubkey<G>) -> &mut Self;
 
     /// Get a copy of the public key for this credential.  If the public
     /// key has not yet been set or computed, a pubkey with X0 == None
@@ -201,7 +204,7 @@ pub trait CMZCredential<G: PrimeGroup> {
 
     /// Set the private key for this credential.  The public key will
     /// automatically be computed from the private key.
-    fn set_privkey(&mut self, privkey: &CMZPrivkey<G>);
+    fn set_privkey(&mut self, privkey: &CMZPrivkey<G>) -> &mut Self;
 
     /// Get a copy of the private key for this credential.  If the
     /// private key has not yet been set, a privkey with an empty x
@@ -211,6 +214,22 @@ pub trait CMZCredential<G: PrimeGroup> {
     /// Generate random private and public keys for this credential
     /// type.
     fn gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<G>, CMZPubkey<G>);
+
+    /// Convenience function for creating a new Self, and loading the
+    /// given private key (which will also compute the public key).
+    fn using_privkey(privkey: &CMZPrivkey<G>) -> Self {
+        let mut slf = Self::default();
+        slf.set_privkey(privkey);
+        slf
+    }
+
+    /// Convenience function for creating a new Self, and loading the
+    /// given public key.
+    fn using_pubkey(pubkey: &CMZPubkey<G>) -> Self {
+        let mut slf = Self::default();
+        slf.set_pubkey(pubkey);
+        slf
+    }
 }
 
 /** The CMZ macro for declaring CMZ credentials.
