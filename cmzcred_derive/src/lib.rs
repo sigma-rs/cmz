@@ -11,17 +11,24 @@ the CMZCredential trait for the declared credential.
 
 */
 
+use darling::FromDeriveInput;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data,DataStruct,DeriveInput,Fields,FieldsNamed,Ident,Visibility};
-use darling::FromDeriveInput;
+use syn::{Data, DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Visibility};
 
 fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStream {
     // Ensure that CMZCred is derived on a struct and not something else
     // (like an enum)
-    let Data::Struct(DataStruct{struct_token: _,
-        fields: Fields::Named(FieldsNamed{brace_token: _, ref named}),
-        semi_token: _}) = ast.data else {
+    let Data::Struct(DataStruct {
+        struct_token: _,
+        fields:
+            Fields::Named(FieldsNamed {
+                brace_token: _,
+                ref named,
+            }),
+        semi_token: _,
+    }) = ast.data
+    else {
         panic!("CMZCred derived on a non-struct");
     };
     // attrs and idents are each vectors of the names of the attributes
@@ -44,8 +51,7 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
     }
     let num_attrs = attrs.len();
     let name = &ast.ident;
-    let errmsg = format!("Invalid attribute name for {} CMZ credential",
-        name);
+    let errmsg = format!("Invalid attribute name for {} CMZ credential", name);
 
     // Output the CMZCredential trait implementation
     let gen = quote! {
