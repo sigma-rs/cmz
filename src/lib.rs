@@ -169,7 +169,7 @@ pub fn cmz_privkey_to_pubkey<G: PrimeGroup>(privkey: &CMZPrivkey<G>) -> CMZPubke
 }
 
 /// The CMZCredential trait implemented by all CMZ credential struct types.
-pub trait CMZCredential<G: PrimeGroup>
+pub trait CMZCredential
 where
     Self: Default + Sized,
 {
@@ -195,29 +195,29 @@ where
     fn attr_mut(&mut self, name: &str) -> &mut Option<Self::Scalar>;
 
     /// Set the public key for this credential.
-    fn set_pubkey(&mut self, pubkey: &CMZPubkey<G>) -> &mut Self;
+    fn set_pubkey(&mut self, pubkey: &CMZPubkey<Self::Point>) -> &mut Self;
 
     /// Get a copy of the public key for this credential.  If the public
     /// key has not yet been set or computed, a pubkey with X0 == None
     /// will be returned.
-    fn get_pubkey(&self) -> CMZPubkey<G>;
+    fn get_pubkey(&self) -> CMZPubkey<Self::Point>;
 
     /// Set the private key for this credential.  The public key will
     /// automatically be computed from the private key.
-    fn set_privkey(&mut self, privkey: &CMZPrivkey<G>) -> &mut Self;
+    fn set_privkey(&mut self, privkey: &CMZPrivkey<Self::Point>) -> &mut Self;
 
     /// Get a copy of the private key for this credential.  If the
     /// private key has not yet been set, a privkey with an empty x
     /// vector will be returned.
-    fn get_privkey(&self) -> CMZPrivkey<G>;
+    fn get_privkey(&self) -> CMZPrivkey<Self::Point>;
 
     /// Generate random private and public keys for this credential
     /// type.
-    fn gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<G>, CMZPubkey<G>);
+    fn gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>);
 
     /// Convenience function for creating a new Self, and loading the
     /// given private key (which will also compute the public key).
-    fn using_privkey(privkey: &CMZPrivkey<G>) -> Self {
+    fn using_privkey(privkey: &CMZPrivkey<Self::Point>) -> Self {
         let mut slf = Self::default();
         slf.set_privkey(privkey);
         slf
@@ -225,7 +225,7 @@ where
 
     /// Convenience function for creating a new Self, and loading the
     /// given public key.
-    fn using_pubkey(pubkey: &CMZPubkey<G>) -> Self {
+    fn using_pubkey(pubkey: &CMZPubkey<Self::Point>) -> Self {
         let mut slf = Self::default();
         slf.set_pubkey(pubkey);
         slf

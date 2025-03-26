@@ -55,7 +55,7 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
 
     // Output the CMZCredential trait implementation
     let gen = quote! {
-        impl CMZCredential<#group_ident> for #name {
+        impl CMZCredential for #name {
             type Scalar = <#group_ident as Group>::Scalar;
             type Point = #group_ident;
 
