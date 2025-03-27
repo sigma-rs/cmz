@@ -18,7 +18,7 @@ pub use serde_with::{serde_as, DeserializeAs, SerializeAs};
 //
 // Pattern from https://docs.rs/serde_with/3.12.0/serde_with/guide/serde_as/index.html
 
-mod primefield_serde;
+mod group_serde;
 
 pub struct SerdeScalar;
 
@@ -27,7 +27,7 @@ impl<F: PrimeField> SerializeAs<F> for SerdeScalar {
     where
         S: Serializer,
     {
-        primefield_serde::serialize(value, serializer)
+        group_serde::serialize_scalar(value, serializer)
     }
 }
 
@@ -36,11 +36,9 @@ impl<'de, F: PrimeField> DeserializeAs<'de, F> for SerdeScalar {
     where
         D: Deserializer<'de>,
     {
-        primefield_serde::deserialize(deserializer)
+        group_serde::deserialize_scalar(deserializer)
     }
 }
-
-mod group_serde;
 
 pub struct SerdePoint;
 
@@ -49,7 +47,7 @@ impl<G: Group + GroupEncoding> SerializeAs<G> for SerdePoint {
     where
         S: Serializer,
     {
-        group_serde::serialize(value, serializer)
+        group_serde::serialize_point(value, serializer)
     }
 }
 
@@ -58,7 +56,7 @@ impl<'de, G: Group + GroupEncoding> DeserializeAs<'de, G> for SerdePoint {
     where
         D: Deserializer<'de>,
     {
-        group_serde::deserialize(deserializer)
+        group_serde::deserialize_point(deserializer)
     }
 }
 

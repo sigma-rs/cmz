@@ -1,4 +1,4 @@
-//! serde adaptors for Group + GroupEncoding
+//! serde adaptors for Group + GroupEncoding and for PrimeField
 //!
 //! Adapted from elliptic_curve_tools v0.1.2 by Michael Lodder:
 //! https://crates.io/crates/elliptic-curve-tools
@@ -36,6 +36,7 @@ use core::{
     fmt::{self, Formatter},
     marker::PhantomData,
 };
+use ff::PrimeField;
 use group::{Group, GroupEncoding};
 use serde::{
     self,
@@ -44,7 +45,7 @@ use serde::{
 };
 
 /// Serialize a group element.
-pub fn serialize<G, S>(g: &G, s: S) -> Result<S::Ok, S::Error>
+pub fn serialize_point<G, S>(g: &G, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
     G: Group + GroupEncoding,
@@ -53,13 +54,32 @@ where
 }
 
 /// Deserialize a group element.
-pub fn deserialize<'de, G, D>(d: D) -> Result<G, D::Error>
+pub fn deserialize_point<'de, G, D>(d: D) -> Result<G, D::Error>
 where
     D: Deserializer<'de>,
     G: Group + GroupEncoding,
 {
     let bytes = deserialize_(d)?;
     Option::from(G::from_bytes(&bytes)).ok_or(DError::custom("invalid group element"))
+}
+
+/// Serialize a prime field element.
+pub fn serialize_scalar<F, S>(f: &F, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    F: PrimeField,
+{
+    serialize_(f.to_repr(), s)
+}
+
+/// Deserialize a prime field element.
+pub fn deserialize_scalar<'de, F, D>(d: D) -> Result<F, D::Error>
+where
+    D: Deserializer<'de>,
+    F: PrimeField,
+{
+    let repr = deserialize_(d)?;
+    Option::from(F::from_repr(repr)).ok_or(DError::custom("invalid prime field element"))
 }
 
 fn serialize_<B, S>(bytes: B, s: S) -> Result<S::Ok, S::Error>
