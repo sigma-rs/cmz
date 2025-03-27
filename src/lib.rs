@@ -7,31 +7,92 @@ use core::any::Any;
 use ff::PrimeField;
 use generic_static::StaticTypeMap;
 use group::prime::PrimeGroup;
-use group::{Group, WnafBase, WnafScalar};
+use group::{Group, GroupEncoding, WnafBase, WnafScalar};
 use lazy_static::lazy_static;
 use rand_core::RngCore;
+pub use serde::{Deserialize, Deserializer, Serialize, Serializer};
+pub use serde_with::{serde_as, DeserializeAs, SerializeAs};
+
+// We need wrappers for group::Group and ff::PrimeField elements to be
+// handled by serde
+//
+// Pattern from https://docs.rs/serde_with/3.12.0/serde_with/guide/serde_as/index.html
+
+mod primefield_serde;
+
+pub struct SerdeScalar;
+
+impl<F: PrimeField> SerializeAs<F> for SerdeScalar {
+    fn serialize_as<S>(value: &F, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        primefield_serde::serialize(value, serializer)
+    }
+}
+
+impl<'de, F: PrimeField> DeserializeAs<'de, F> for SerdeScalar {
+    fn deserialize_as<D>(deserializer: D) -> Result<F, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        primefield_serde::deserialize(deserializer)
+    }
+}
+
+mod group_serde;
+
+pub struct SerdePoint;
+
+impl<G: Group + GroupEncoding> SerializeAs<G> for SerdePoint {
+    fn serialize_as<S>(value: &G, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        group_serde::serialize(value, serializer)
+    }
+}
+
+impl<'de, G: Group + GroupEncoding> DeserializeAs<'de, G> for SerdePoint {
+    fn deserialize_as<D>(deserializer: D) -> Result<G, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        group_serde::deserialize(deserializer)
+    }
+}
 
 /// The CMZMac struct represents a MAC on a CMZ credential.
-#[derive(Copy, Clone, Debug, Default)]
+#[serde_as]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CMZMac<G: PrimeGroup> {
+    #[serde_as(as = "SerdePoint")]
     pub P: G,
+    #[serde_as(as = "SerdePoint")]
     pub Q: G,
 }
 
 /// The CMZPrivkey struct represents a CMZ private key
-#[derive(Clone, Debug, Default)]
-pub struct CMZPrivkey<G: PrimeGroup> {
+#[serde_as]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CMZPrivkey<G: PrimeGroup + GroupEncoding> {
+    #[serde_as(as = "SerdeScalar")]
     pub x0tilde: <G as Group>::Scalar,
+    #[serde_as(as = "SerdeScalar")]
     pub x0: <G as Group>::Scalar,
     // The elements of x correspond to the attributes of the credential
+    #[serde_as(as = "Vec<SerdeScalar>")]
     pub x: Vec<<G as Group>::Scalar>,
 }
 
 /// The CMZPubkey struct represents a CMZ public key
-#[derive(Clone, Debug, Default)]
-pub struct CMZPubkey<G: PrimeGroup> {
+#[serde_as]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CMZPubkey<G: PrimeGroup + GroupEncoding> {
+    #[serde_as(as = "Option<SerdePoint>")]
     pub X0: Option<G>,
     // The elements of X correspond to the attributes of the credential
+    #[serde_as(as = "Vec<SerdePoint>")]
     pub X: Vec<G>,
 }
 
@@ -177,7 +238,7 @@ where
     type Scalar: PrimeField;
 
     /// The type of the coordinates of the MAC for this credential
-    type Point: PrimeGroup;
+    type Point: PrimeGroup + GroupEncoding;
 
     /// Produce a vector of strings containing the names of the
     /// attributes of this credential.  (The MAC is not included.)
@@ -245,9 +306,8 @@ of type `CMZMac`, and an implementation (via the `CMZCred` derive) of
 the `CMZCredential` trait.  The mathematical group used (the field for
 the values of the attributes and the private key elements, and the group
 elements for the commitments, MAC components, and public key elements)
-is Group (which must satisfy the group::Group trait).  If "<Group>" is
-omitted, the macro will default to using a group called "G", which you
-can define, for example, as:
+is Group.  If "<Group>" is omitted, the macro will default to using a
+group called "G", which you can define, for example, as:
 
 use curve25519_dalek::ristretto::RistrettoPoint as G;
 
@@ -256,16 +316,19 @@ or:
 use curve25519_dalek::ristretto::RistrettoPoint;
 type G = RistrettoPoint;
 
-The group must implement the trait group::prime::PrimeGroup.
+The group must implement the traits group::prime::PrimeGroup and
+group::GroupEncoding.
 
 */
 #[macro_export]
 macro_rules! CMZ {
     ( $name: ident < $G: ident > : $( $id: ident ),+ ) => {
-        #[derive(CMZCred,Clone,Debug,Default)]
+        #[serde_as]
+        #[derive(CMZCred,Clone,Debug,Default,Serialize,Deserialize)]
         #[cmzcred_group(group = $G)]
         pub struct $name {
         $(
+            #[serde_as(as="Option<SerdeScalar>")]
             pub $id: Option<<$G as Group>::Scalar>,
         )+
             pub MAC: CMZMac<$G>,
@@ -274,10 +337,12 @@ macro_rules! CMZ {
         }
     };
     ( $name: ident : $( $id: ident ),+ ) => {
-        #[derive(CMZCred,Clone,Debug,Default)]
+        #[serde_as]
+        #[derive(CMZCred,Clone,Debug,Default,Serialize,Deserialize)]
         #[cmzcred_group(group = G)]
         pub struct $name {
         $(
+            #[serde_as(as="Option<SerdeScalar>")]
             pub $id: Option<<G as Group>::Scalar>,
         )+
             pub MAC: CMZMac<G>,

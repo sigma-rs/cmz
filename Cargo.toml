@@ -7,11 +7,15 @@ edition = "2021"
 cmzcred_derive = { path = "cmzcred_derive" }
 curve25519-dalek = { version = "4", features = [ "group", "rand_core", "digest" ] }
 ff = "0.13"
-group = "0.13"
-lazy_static = "1"
 generic_static = "0.2"
+group = "0.13"
+hex = { version = "0.4", features = [ "serde" ] }
+lazy_static = "1"
 rand_core = "0.6"
+serde = { version = "1", features = [ "derive" ] }
+serde_with = "3"
 
 [dev-dependencies]
+bincode = "1"
 rand = "0.8"
 sha2 = "0.10"

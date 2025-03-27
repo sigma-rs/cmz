@@ -17,7 +17,22 @@ fn test_basic() {
     ));
 
     let (privkey, pubkey) = Basic::gen_keys(&mut rng);
-    let basic_cred = Basic::using_privkey(&privkey);
+
+    // Serialize and deserialize
+    let privkey_bytes = bincode::serialize(&privkey).unwrap();
+    let pubkey_bytes = bincode::serialize(&pubkey).unwrap();
+
+    let privkey_serde = bincode::deserialize::<CMZPrivkey<RistrettoPoint>>(&privkey_bytes).unwrap();
+    let pubkey_serde = bincode::deserialize::<CMZPubkey<RistrettoPoint>>(&pubkey_bytes).unwrap();
+
+    assert!(privkey == privkey_serde);
+    assert!(pubkey == pubkey_serde);
+
+    let basic_cred = Basic::using_privkey(&privkey_serde);
+
+    let basic_cred_bytes = bincode::serialize(&basic_cred).unwrap();
 
     println!("{:#?}", basic_cred);
+
+    println!("{:#?}", basic_cred_bytes);
 }
