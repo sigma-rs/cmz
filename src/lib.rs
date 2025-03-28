@@ -2,7 +2,7 @@
 // lowercase letters
 #![allow(non_snake_case)]
 
-pub use cmzcred_derive::CMZCred;
+pub use cmzcred_derive::*;
 use core::any::Any;
 use ff::PrimeField;
 use generic_static::StaticTypeMap;

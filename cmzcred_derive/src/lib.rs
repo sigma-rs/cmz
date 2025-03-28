@@ -1,3 +1,6 @@
+// We want the macros like CMZProto to be camel case
+#![allow(non_snake_case)]
+
 /*! The implementation of the CMZCred derive.
 
 This derive should not be explicitly used by a programmer using a CMZ
@@ -14,7 +17,13 @@ the CMZCredential trait for the declared credential.
 use darling::FromDeriveInput;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Visibility};
+use std::collections::HashMap;
+use syn::parse::{Parse, ParseStream, Result};
+use syn::punctuated::Punctuated;
+use syn::{
+    braced, bracketed, parse_macro_input, token, Data, DataStruct, DeriveInput, Expr, Fields,
+    FieldsNamed, Ident, Token, Visibility,
+};
 
 fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStream {
     // Ensure that CMZCred is derived on a struct and not something else
@@ -144,4 +153,265 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
 
     // Build the trait implementation
     impl_cmzcred_derive(&ast, &group_ident.group)
+}
+
+/** The CMZ Protocol creation macros.
+
+   The format is:
+
+   let proto = CMZProtocol! { proto_name,
+     [ A: Cred {
+         attr1: H,
+         attr2: R,
+       },
+       B: Cred2 {
+         attr3: H,
+         attr4: I,
+       } ],
+     C: Cred3 {
+       attr5: J,
+       attr6: R,
+       attr7: H,
+       attr8: I,
+       attr9: S,
+     },
+     A.attr1 == B.attr3,
+     A.attr1 == C.attr7,
+   };
+
+   The parameters are:
+   - an identifier for the protocol
+   - a list of zero or more specifications for credentials that will be shown
+   - a list of zero or more specifications for credentials that will be issued
+   - zero or more statements relating the attributes in the credentials
+
+   Each credential specification list can be:
+   - empty
+   - a single credential specification
+   - a square-bracketed list of credential specifications
+
+   Each credential specification is:
+   - an identifier for the credential
+   - a type for the credential, previously defined with the CMZ! macro
+   - a braced list of the attributes of the credential (as defined in
+     the CMZ! macro), annotated with the attribute specification
+
+   An attribute specification for a credential to be shown is one of:
+   - H (hide)
+   - R (reveal)
+   - I (implicit)
+
+   An attribute specification for a credential to be issued is one of:
+   - H (hide)
+   - R (reveal)
+   - I (implicit)
+   - S (set by issuer)
+   - J (joint creation)
+*/
+
+// The possible attribute specifications for a credential to be shown
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum ShowSpec {
+    Hide,
+    Reveal,
+    Implicit,
+}
+
+impl Parse for ShowSpec {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let spec: Ident = input.parse()?;
+        match spec.to_string().to_uppercase().as_str() {
+            "H" | "HIDE" => Ok(Self::Hide),
+            "R" | "REVEAL" => Ok(Self::Reveal),
+            "I" | "IMPLICIT" => Ok(Self::Implicit),
+            _ => Err(input.error("Unknown attribute spec for shown credential")),
+        }
+    }
+}
+
+// The possible attribute specifications for a credential to be issued
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum IssueSpec {
+    Hide,
+    Reveal,
+    Implicit,
+    Set,
+    Joint,
+}
+
+impl Parse for IssueSpec {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let spec: Ident = input.parse()?;
+        match spec.to_string().to_uppercase().as_str() {
+            "H" | "HIDE" => Ok(Self::Hide),
+            "R" | "REVEAL" => Ok(Self::Reveal),
+            "I" | "IMPLICIT" => Ok(Self::Implicit),
+            "S" | "SET" => Ok(Self::Set),
+            "J" | "JOINT" => Ok(Self::Joint),
+            _ => Err(input.error("Unknown attribute spec for issued credential")),
+        }
+    }
+}
+
+// An attribute specification like "attr1: Reveal"
+#[derive(Clone)]
+struct AttrSpec<ShowOrIssue: Parse> {
+    attr: Ident,
+    spec: ShowOrIssue,
+}
+
+impl<ShowOrIssue: Parse> Parse for AttrSpec<ShowOrIssue> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let attr: Ident = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let spec: ShowOrIssue = input.parse()?;
+        Ok(Self { attr, spec })
+    }
+}
+
+// A specification of a credential, either to be shown or issued
+#[derive(Debug)]
+struct CredSpec<ShowOrIssue: Parse> {
+    id: Ident,
+    cred_type: Ident,
+    attrs: HashMap<String, ShowOrIssue>,
+}
+
+impl<ShowOrIssue: Parse + Copy> Parse for CredSpec<ShowOrIssue> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let id: Ident = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let cred_type: Ident = input.parse()?;
+        let content;
+        braced!(content in input);
+        let attrspecs: Punctuated<AttrSpec<ShowOrIssue>, Token![,]> =
+            content.parse_terminated(AttrSpec::<ShowOrIssue>::parse, Token![,])?;
+        let mut attrs: HashMap<String, ShowOrIssue> = HashMap::new();
+        for attrspec in attrspecs.iter() {
+            attrs.insert(attrspec.attr.to_string(), attrspec.spec);
+        }
+        Ok(Self {
+            id,
+            cred_type,
+            attrs,
+        })
+    }
+}
+
+// A vector of credential specifications, which could be empty, a single
+// credential specification, or a bracketed list of credential
+// specifications.  We need a newtype here and not just a Vec so that we
+// can implement the Parse trait for it.
+struct CredSpecVec<ShowOrIssue: Parse>(Vec<CredSpec<ShowOrIssue>>);
+
+impl<ShowOrIssue: Parse + Copy> Parse for CredSpecVec<ShowOrIssue> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut specvec: Vec<CredSpec<ShowOrIssue>> = Vec::new();
+        if input.peek(Token![,]) {
+            // The list is empty
+        } else if input.peek(token::Bracket) {
+            let content;
+            bracketed!(content in input);
+            let specs: Punctuated<CredSpec<ShowOrIssue>, Token![,]> =
+                content.parse_terminated(CredSpec::<ShowOrIssue>::parse, Token![,])?;
+            for spec in specs.into_iter() {
+                specvec.push(spec);
+            }
+        } else {
+            let spec: CredSpec<ShowOrIssue> = input.parse()?;
+            specvec.push(spec);
+        }
+
+        Ok(Self(specvec))
+    }
+}
+
+// A protocol specification, following the syntax described above.
+#[derive(Debug)]
+struct ProtoSpec {
+    proto_name: Ident,
+    show_creds: Vec<CredSpec<ShowSpec>>,
+    issue_creds: Vec<CredSpec<IssueSpec>>,
+    statements: Vec<Expr>,
+}
+
+impl Parse for ProtoSpec {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let proto_name: Ident = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let showvec: CredSpecVec<ShowSpec> = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let issuevec: CredSpecVec<IssueSpec> = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let statementpunc: Punctuated<Expr, Token![,]> =
+            input.parse_terminated(Expr::parse, Token![,])?;
+        let mut statements: Vec<Expr> = Vec::new();
+        for statement in statementpunc.into_iter() {
+            statements.push(statement);
+        }
+
+        Ok(ProtoSpec {
+            proto_name,
+            show_creds: showvec.0,
+            issue_creds: issuevec.0,
+            statements,
+        })
+    }
+}
+
+// This is where the main work is done.  The six macros in the
+// CMZProtocol macro family (below) all call this function, with
+// different values for the bools.
+fn protocol_macro(
+    input: TokenStream,
+    use_muCMZ: bool,
+    emit_client: bool,
+    emit_issuer: bool,
+) -> TokenStream {
+    let proto_spec: ProtoSpec = parse_macro_input!(input as ProtoSpec);
+    // For now, just return a string representation of the parsed
+    // protcol spec.
+    let s = format!("{proto_spec:#?}");
+    quote! {
+        { #s }
+    }
+    .into()
+}
+
+/** There are six variants of the CMZProtocol macro.  The ones starting
+  with "CMZ" create protocol implementations using the original CMZ
+  issuing protocol.  The ones starting with "muCMZ" using the more
+  efficient µCMZ protocol.  The ones with "Cli" only create the code
+  for the client side of the protocol.  The ones with "Iss" only create
+  the code for the issuer side of the protocol.  (The ones without
+  either create the code for both sides of the protocol.)
+*/
+#[proc_macro]
+pub fn CMZProtocol(input: TokenStream) -> TokenStream {
+    protocol_macro(input, false, true, true)
+}
+
+#[proc_macro]
+pub fn CMZCliProtocol(input: TokenStream) -> TokenStream {
+    protocol_macro(input, false, true, false)
+}
+
+#[proc_macro]
+pub fn CMZIssProtocol(input: TokenStream) -> TokenStream {
+    protocol_macro(input, false, false, true)
+}
+
+#[proc_macro]
+pub fn muCMZProtocol(input: TokenStream) -> TokenStream {
+    protocol_macro(input, true, true, true)
+}
+
+#[proc_macro]
+pub fn muCMZCliProtocol(input: TokenStream) -> TokenStream {
+    protocol_macro(input, true, true, false)
+}
+
+#[proc_macro]
+pub fn muCMZIssProtocol(input: TokenStream) -> TokenStream {
+    protocol_macro(input, true, false, true)
 }
