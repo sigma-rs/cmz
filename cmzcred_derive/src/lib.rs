@@ -306,21 +306,19 @@ struct CredSpecVec<ShowOrIssue: Parse>(Vec<CredSpec<ShowOrIssue>>);
 
 impl<ShowOrIssue: Parse + Copy> Parse for CredSpecVec<ShowOrIssue> {
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut specvec: Vec<CredSpec<ShowOrIssue>> = Vec::new();
-        if input.peek(Token![,]) {
+        let specvec: Vec<CredSpec<ShowOrIssue>> = if input.peek(Token![,]) {
             // The list is empty
+            Vec::new()
         } else if input.peek(token::Bracket) {
             let content;
             bracketed!(content in input);
             let specs: Punctuated<CredSpec<ShowOrIssue>, Token![,]> =
                 content.parse_terminated(CredSpec::<ShowOrIssue>::parse, Token![,])?;
-            for spec in specs.into_iter() {
-                specvec.push(spec);
-            }
+            specs.into_iter().collect()
         } else {
             let spec: CredSpec<ShowOrIssue> = input.parse()?;
-            specvec.push(spec);
-        }
+            vec![spec]
+        };
 
         Ok(Self(specvec))
     }
@@ -345,10 +343,7 @@ impl Parse for ProtoSpec {
         input.parse::<Token![,]>()?;
         let statementpunc: Punctuated<Expr, Token![,]> =
             input.parse_terminated(Expr::parse, Token![,])?;
-        let mut statements: Vec<Expr> = Vec::new();
-        for statement in statementpunc.into_iter() {
-            statements.push(statement);
-        }
+        let statements: Vec<Expr> = statementpunc.into_iter().collect();
 
         Ok(ProtoSpec {
             proto_name,
