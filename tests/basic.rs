@@ -9,6 +9,12 @@ CMZ! { Basic<RistrettoPoint> :
     attr2
 }
 
+CMZProtocol! { basic_proto,
+    A: Basic {
+        attr1: H,
+        attr2: H,
+    }, , }
+
 #[test]
 fn test_basic() {
     let mut rng = rand::thread_rng();
@@ -35,4 +41,8 @@ fn test_basic() {
     println!("{:#?}", basic_cred);
 
     println!("{:#?}", basic_cred_bytes);
+
+    let (req, state) = basic_proto::prepare(&basic_cred).unwrap();
+    println!("{req:#?}");
+    println!("{state:#?}");
 }

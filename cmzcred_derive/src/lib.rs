@@ -364,11 +364,138 @@ fn protocol_macro(
     emit_issuer: bool,
 ) -> TokenStream {
     let proto_spec: ProtoSpec = parse_macro_input!(input as ProtoSpec);
-    // For now, just return a string representation of the parsed
-    // protcol spec.
-    let s = format!("{proto_spec:#?}");
+
+    let proto_name = &proto_spec.proto_name;
+
+    // Build the ClientState struct
+    let client_state = quote! {
+        #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
+        pub struct ClientState {
+        }
+
+        impl TryFrom<&[u8]> for ClientState {
+            type Error = bincode::Error;
+
+            fn try_from(bytes: &[u8]) -> bincode::Result<ClientState> {
+                bincode::deserialize::<ClientState>(bytes)
+            }
+        }
+
+        impl From<&ClientState> for Vec<u8> {
+            fn from(req: &ClientState) -> Vec<u8> {
+                bincode::serialize(req).unwrap()
+            }
+        }
+
+        impl ClientState {
+            pub fn as_bytes(&self) -> Vec<u8> {
+                self.into()
+            }
+        }
+    };
+
+    // Build the Request and Reply structs
+    let messages = quote! {
+        #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
+        pub struct Request {
+        }
+
+        impl TryFrom<&[u8]> for Request {
+            type Error = bincode::Error;
+
+            fn try_from(bytes: &[u8]) -> bincode::Result<Request> {
+                bincode::deserialize::<Request>(bytes)
+            }
+        }
+
+        impl From<&Request> for Vec<u8> {
+            fn from(req: &Request) -> Vec<u8> {
+                bincode::serialize(req).unwrap()
+            }
+        }
+
+        impl Request {
+            pub fn as_bytes(&self) -> Vec<u8> {
+                self.into()
+            }
+        }
+
+        #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
+        pub struct Reply {
+        }
+
+        impl TryFrom<&[u8]> for Reply {
+            type Error = bincode::Error;
+
+            fn try_from(bytes: &[u8]) -> bincode::Result<Reply> {
+                bincode::deserialize::<Reply>(bytes)
+            }
+        }
+
+        impl From<&Reply> for Vec<u8> {
+            fn from(rep: &Reply) -> Vec<u8> {
+                bincode::serialize(rep).unwrap()
+            }
+        }
+
+        impl Reply {
+            pub fn as_bytes(&self) -> Vec<u8> {
+                self.into()
+            }
+        }
+    };
+
+    // The argument list for the client's prepare function.  There is an
+    // immutable reference for each credential to be shown, and an owned
+    // value for each credential to be issued.
+    let client_show_args = proto_spec.show_creds.iter().map(|c| {
+        let id = &c.id;
+        let cred_type = &c.cred_type;
+        quote! { #id: &#cred_type, }
+        });
+
+    let client_issue_args = proto_spec.issue_creds.iter().map(|c| {
+        let id = &c.id;
+        let cred_type = &c.cred_type;
+        quote! { #id: #cred_type, }
+        });
+
+    // Build the client's prepare function
+    let client_func = quote! {
+        pub fn prepare(#(#client_show_args)* #(#client_issue_args)*)
+                -> Result<(Request, ClientState),CMZError> {
+            Ok((Request{}, ClientState{}))
+        }
+    };
+
+    // Build the issuer's handle function
+    let issuer_func = quote! {
+        pub fn handle(request: Request) -> Result<Reply,CMZError> {
+            Ok(Reply{})
+        }
+    };
+
+    let client_side = if emit_client {
+        quote! { #client_state #client_func }
+    } else {
+        quote! {}
+    };
+
+    let issuer_side = if emit_issuer {
+        issuer_func
+    } else {
+        quote! {}
+    };
+
+    // Output the generated module for this protocol
     quote! {
-        { #s }
+        pub mod #proto_name {
+            use super::*;
+
+            #messages
+            #client_side
+            #issuer_side
+        }
     }
     .into()
 }
