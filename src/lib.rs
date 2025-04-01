@@ -74,7 +74,7 @@ pub struct CMZMac<G: PrimeGroup> {
 /// The CMZPrivkey struct represents a CMZ private key
 #[serde_as]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct CMZPrivkey<G: PrimeGroup + GroupEncoding> {
+pub struct CMZPrivkey<G: PrimeGroup> {
     #[serde_as(as = "SerdeScalar")]
     pub x0tilde: <G as Group>::Scalar,
     #[serde_as(as = "SerdeScalar")]
@@ -87,7 +87,7 @@ pub struct CMZPrivkey<G: PrimeGroup + GroupEncoding> {
 /// The CMZPubkey struct represents a CMZ public key
 #[serde_as]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct CMZPubkey<G: PrimeGroup + GroupEncoding> {
+pub struct CMZPubkey<G: PrimeGroup> {
     #[serde_as(as = "Option<SerdePoint>")]
     pub X0: Option<G>,
     // The elements of X correspond to the attributes of the credential
@@ -237,7 +237,7 @@ where
     type Scalar: PrimeField;
 
     /// The type of the coordinates of the MAC for this credential
-    type Point: PrimeGroup + GroupEncoding;
+    type Point: PrimeGroup;
 
     /// Produce a vector of strings containing the names of the
     /// attributes of this credential.  (The MAC is not included.)
@@ -315,8 +315,7 @@ or:
 use curve25519_dalek::ristretto::RistrettoPoint;
 type G = RistrettoPoint;
 
-The group must implement the traits group::prime::PrimeGroup and
-group::GroupEncoding.
+The group must implement the trait group::prime::PrimeGroup.
 
 */
 #[macro_export]
