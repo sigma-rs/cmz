@@ -388,6 +388,38 @@ fn protocol_macro(
     let proto_spec: ProtoSpec = parse_macro_input!(input as ProtoSpec);
 
     let proto_name = &proto_spec.proto_name;
+    let has_params = proto_spec.params.len() > 0;
+    let tot_num_creds = proto_spec.show_creds.len() +
+        proto_spec.issue_creds.len();
+
+    // Use the group of the first named credential type
+    let group_types = if proto_spec.show_creds.len() > 0 {
+        let first_cred_type = &proto_spec.show_creds[0].cred_type;
+        quote! {
+            pub type Scalar = <#first_cred_type as CMZCredential>::Scalar;
+            pub type Point = <#first_cred_type as CMZCredential>::Point;
+        }
+    } else if proto_spec.issue_creds.len() > 0 {
+        let first_cred_type = &proto_spec.issue_creds[0].cred_type;
+        quote! {
+            pub type Scalar = <#first_cred_type as CMZCredential>::Scalar;
+            pub type Point = <#first_cred_type as CMZCredential>::Point;
+        }
+    } else {
+        quote! {}
+    };
+
+    // Build the Params struct, if we have params
+    let params_struct = if has_params {
+        let param_list = &proto_spec.params;
+        quote! {
+            pub struct Params {
+                #( pub #param_list: Scalar, )*
+            }
+        }
+    } else {
+        quote! {}
+    };
 
     // Build the ClientState struct
     let client_state = quote! {
@@ -482,23 +514,152 @@ fn protocol_macro(
         quote! { #id: #cred_type, }
         });
 
+    let client_params_arg = if has_params {
+        quote! { params: &Params, }
+    } else {
+        quote! {}
+    };
+
     // Build the client's prepare function
     let client_func = quote! {
-        pub fn prepare(#(#client_show_args)* #(#client_issue_args)*)
+        pub fn prepare(#(#client_show_args)* #(#client_issue_args)*
+            #client_params_arg)
                 -> Result<(Request, ClientState),CMZError> {
             Ok((Request{}, ClientState{}))
         }
     };
 
+    // The argument list for the issuer's fill_creds callback
+    let issuer_fill_creds_args = proto_spec.show_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { &mut #cred_type, }
+        })
+        .chain(proto_spec.issue_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { &mut #cred_type, }
+        }));
+
+    // The return value of the callback
+    let issuer_fill_creds_params_ret = if has_params {
+        quote! { Params }
+    } else {
+        quote! { () }
+    };
+
+    // The argument list for the issuer's authorize callback
+    let issuer_authorize_args = proto_spec.show_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { &#cred_type, }
+        })
+        .chain(proto_spec.issue_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { &#cred_type, }
+        }
+        ));
+
+    // The type of the returned credentials from handle
+    let issuer_handle_cred_rettypes = proto_spec.show_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { #cred_type }
+        })
+        .chain(proto_spec.issue_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { #cred_type }
+        }));
+
+    let issuer_handle_ret = if tot_num_creds > 1 {
+        quote! { Result<(Reply, (#(#issuer_handle_cred_rettypes),*)),CMZError> }
+    } else if tot_num_creds == 1 {
+        quote! { Result<(Reply, #(#issuer_handle_cred_rettypes)*),CMZError> }
+    } else {
+        quote! { Result<Reply,CMZError> }
+    };
+
+    // Temporary: null return value for issuer's handle function
+    let issuer_handle_cred_retvals = proto_spec.show_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { #cred_type::default() }
+        })
+        .chain(proto_spec.issue_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { #cred_type::default() }
+        }));
+
+    let issuer_handle_retval = if tot_num_creds > 1 {
+        quote! { Ok((Reply{}, (#(#issuer_handle_cred_retvals),*))) }
+    } else if tot_num_creds == 1 {
+        quote! { Ok((Reply{}, #(#issuer_handle_cred_retvals)*)) }
+    } else {
+        quote! { Ok(Reply{}) }
+    };
+
     // Build the issuer's handle function
     let issuer_func = quote! {
-        pub fn handle(request: Request) -> Result<Reply,CMZError> {
-            Ok(Reply{})
+        pub fn handle<F,A>(request: Request, fill_creds: F, authorize: A)
+            -> #issuer_handle_ret
+        where
+            F: FnOnce(#(#issuer_fill_creds_args)*) ->
+                Result<#issuer_fill_creds_params_ret, CMZError>,
+            A: FnOnce(#(#issuer_authorize_args)*) ->
+                Result<(),CMZError>
+        {
+            #issuer_handle_retval
+        }
+    };
+
+    // The type of the returned credentials from finalize
+    let clientstate_finalize_cred_rettypes =
+        proto_spec.issue_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { #cred_type }
+        });
+
+    let clientstate_finalize_rettype = if proto_spec.issue_creds.len() > 1 {
+        quote! { Result<(#(#clientstate_finalize_cred_rettypes),*),(CMZError,Self)> }
+    } else if proto_spec.issue_creds.len() == 1 {
+        quote! { Result<#(#clientstate_finalize_cred_rettypes)*,(CMZError,Self)> }
+    } else {
+        quote! { Result<(),(CMZError,Self)> }
+    };
+
+
+    // Temporary: null return value for ClientState's finalize function
+    let clientstate_finalize_cred_retvals =
+        proto_spec.issue_creds.iter()
+        .map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { #cred_type::default() }
+        });
+
+    let clientstate_finalize_retval = if proto_spec.issue_creds.len() > 1 {
+        quote! { Ok((#(#clientstate_finalize_cred_retvals),*)) }
+    } else if proto_spec.issue_creds.len() == 1 {
+        quote! { Ok(#(#clientstate_finalize_cred_retvals)*) }
+    } else {
+        quote! { Ok(()) }
+    };
+
+    // Build the ClientState's finalize function
+    let clientstate_finalize_func = quote! {
+        impl ClientState {
+            pub fn finalize(self, reply: Reply)
+                -> #clientstate_finalize_rettype {
+                #clientstate_finalize_retval
+            }
         }
     };
 
     let client_side = if emit_client {
-        quote! { #client_state #client_func }
+        quote! { #client_state #client_func #clientstate_finalize_func }
     } else {
         quote! {}
     };
@@ -514,6 +675,8 @@ fn protocol_macro(
         pub mod #proto_name {
             use super::*;
 
+            #group_types
+            #params_struct
             #messages
             #client_side
             #issuer_side
