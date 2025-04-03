@@ -1,4 +1,4 @@
-// We want the macros like CMZProto to be camel case
+// We want the macros like CMZProtocol to be camel case
 #![allow(non_snake_case)]
 
 /*! The implementation of the CMZCred derive.
