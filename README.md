@@ -105,7 +105,7 @@ The primary way to create a protocol is with the `CMZProtocol!` macro.
         I: Item { serialno: H, price: H } ],
       N: Wallet { randid: J, balance: H },
       N.balance >= 0,
-      N.balance + I.price = W.balance
+      W.balance = N.balance + I.price
     }
 ```
 
@@ -219,7 +219,7 @@ The generated `wallet_spend::handle`` function (run by the issuer) has
 the following signature:
 
 ```rust
-    pub fn handle(
+    pub fn handle<F,A>(
         request: Request,
         fill_creds: F,
         authorize: A,
@@ -274,3 +274,45 @@ the event of an error (such as a malicious reply impersonating the
 issuer?), `self` is returned so you can possibly try again.  In the
 event of success, the newly issued credentials are returned as a tuple,
 or if as in this case, there's just one, as a single element.
+
+### Parameterized Protocols
+
+A protocol can optionally be declared as having _parameters_, which are
+public Scalar constants that will be filled in at runtime.  You declare
+parameters by changing the first line of the `CMZProtocol!` macro
+invocation from, for example:
+
+```rust
+    CMZProtocol! { proto_name,
+```
+
+to:
+
+```rust
+    CMZProtocol! { proto_name<param1, param2>,
+```
+
+then you can use `param1` and `param2` wherever you could have used a
+literal Scalar constant in the statements in the statement list.  For
+example:
+
+```rust
+    CMZProtocol! { wallet_spend<fee>,
+      [ W: Wallet { randid: R, balance: H },
+        I: Item { serialno: H, price: H } ],
+      N: Wallet { randid: J, balance: H },
+      N.balance >= 0,
+      W.balance = N.balance + I.price + fee
+    }
+```
+
+If you declare parameters in your protocol, the API changes as follows:
+
+  - There is a `struct Params` declared in the generated module,
+    containing a `Scalar` field for each named parameter.
+  - The `prepare` function takes an additional `&Params` argument at the
+    end, which the client must fill in before calling `prepare`.
+  - The `fill_creds` callback returns `Result<Params,CMZError>` instead of
+    `Result<(),CMZError>`, and it is the job of that callback to supply
+    a filled-in `Params` struct, possibly based on other values it
+    receives from the client in the attributes of the credentials.
