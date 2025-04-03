@@ -159,7 +159,7 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
 
    The format is:
 
-   let proto = CMZProtocol! { proto_name,
+   let proto = CMZProtocol! { proto_name<param1,param2>,
      [ A: Cred {
          attr1: H,
          attr2: R,
@@ -175,12 +175,13 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
        attr8: I,
        attr9: S,
      },
-     A.attr1 == B.attr3,
+     A.attr1 == B.attr3 + param1,
      A.attr1 == C.attr7,
    };
 
    The parameters are:
    - an identifier for the protocol
+   - an optional angle-bracketed list of parameters (identifiers)
    - a list of zero or more specifications for credentials that will be shown
    - a list of zero or more specifications for credentials that will be issued
    - zero or more statements relating the attributes in the credentials
@@ -328,6 +329,7 @@ impl<ShowOrIssue: Parse + Copy> Parse for CredSpecVec<ShowOrIssue> {
 #[derive(Debug)]
 struct ProtoSpec {
     proto_name: Ident,
+    params: Vec<Ident>,
     show_creds: Vec<CredSpec<ShowSpec>>,
     issue_creds: Vec<CredSpec<IssueSpec>>,
     statements: Vec<Expr>,
@@ -335,7 +337,26 @@ struct ProtoSpec {
 
 impl Parse for ProtoSpec {
     fn parse(input: ParseStream) -> Result<Self> {
+        let mut params: Vec<Ident> = Vec::new();
         let proto_name: Ident = input.parse()?;
+        // See if there are optional parameters; Rust does not provide a
+        // convenient angle-bracket parser like it does parens, square
+        // brackets, and braces, so we just roll our own.
+        if input.peek(Token![<]) {
+            input.parse::<Token![<]>()?;
+            loop {
+                if input.peek(Token![>]) {
+                    break;
+                }
+                let param: Ident = input.parse()?;
+                params.push(param);
+                if input.peek(Token![>]) {
+                    break;
+                }
+                input.parse::<Token![,]>()?;
+            }
+            input.parse::<Token![>]>()?;
+        }
         input.parse::<Token![,]>()?;
         let showvec: CredSpecVec<ShowSpec> = input.parse()?;
         input.parse::<Token![,]>()?;
@@ -347,6 +368,7 @@ impl Parse for ProtoSpec {
 
         Ok(ProtoSpec {
             proto_name,
+            params,
             show_creds: showvec.0,
             issue_creds: issuevec.0,
             statements,
