@@ -200,6 +200,7 @@ the following signature:
 
 ```rust
     pub fn prepare(
+        rng: &mut impl RngCore,
         W: &Wallet,
         I: &Item,
         N: Wallet,
@@ -220,6 +221,7 @@ the following signature:
 
 ```rust
     pub fn handle<F,A>(
+        rng: &mut impl RngCore,
         request: Request,
         fill_creds: F,
         authorize: A,

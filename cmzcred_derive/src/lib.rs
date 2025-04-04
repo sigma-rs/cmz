@@ -522,8 +522,8 @@ fn protocol_macro(
 
     // Build the client's prepare function
     let client_func = quote! {
-        pub fn prepare(#(#client_show_args)* #(#client_issue_args)*
-            #client_params_arg)
+        pub fn prepare(rng: &mut impl RngCore,
+            #(#client_show_args)* #(#client_issue_args)* #client_params_arg)
                 -> Result<(Request, ClientState),CMZError> {
             Ok((Request{}, ClientState{}))
         }
@@ -603,7 +603,8 @@ fn protocol_macro(
 
     // Build the issuer's handle function
     let issuer_func = quote! {
-        pub fn handle<F,A>(request: Request, fill_creds: F, authorize: A)
+        pub fn handle<F,A>(rng: &mut impl RngCore,
+            request: Request, fill_creds: F, authorize: A)
             -> #issuer_handle_ret
         where
             F: FnOnce(#(#issuer_fill_creds_args)*) ->

@@ -42,7 +42,7 @@ fn test_basic() {
 
     println!("{:#?}", basic_cred_bytes);
 
-    let (req, state) = basic_proto::prepare(&basic_cred).unwrap();
+    let (req, state) = basic_proto::prepare(&mut rng, &basic_cred).unwrap();
     println!("{req:#?}");
     println!("{state:#?}");
 }
