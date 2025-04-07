@@ -112,12 +112,15 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                 self.privkey.clone()
             }
 
-            fn gen_keys(rng: &mut impl RngCore) ->
+            fn gen_keys(rng: &mut impl RngCore, muCMZ: bool) ->
                     (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>) {
                 // Generate (num_attrs + 2) random scalars as the
                 // private key
-                let x0tilde: Self::Scalar =
-                    <Self::Scalar as ff::Field>::random(&mut *rng);
+                let x0tilde: Self::Scalar = if muCMZ {
+                    <Self::Scalar as ff::Field>::ZERO
+                } else {
+                    <Self::Scalar as ff::Field>::random(&mut *rng)
+                };
                 let x0: Self::Scalar =
                     <Self::Scalar as ff::Field>::random(&mut *rng);
                 let x: Vec<Self::Scalar> = (0..Self::num_attrs())
@@ -389,8 +392,7 @@ fn protocol_macro(
 
     let proto_name = &proto_spec.proto_name;
     let has_params = proto_spec.params.len() > 0;
-    let tot_num_creds = proto_spec.show_creds.len() +
-        proto_spec.issue_creds.len();
+    let tot_num_creds = proto_spec.show_creds.len() + proto_spec.issue_creds.len();
 
     // Use the group of the first named credential type
     let group_types = if proto_spec.show_creds.len() > 0 {
@@ -506,13 +508,13 @@ fn protocol_macro(
         let id = &c.id;
         let cred_type = &c.cred_type;
         quote! { #id: &#cred_type, }
-        });
+    });
 
     let client_issue_args = proto_spec.issue_creds.iter().map(|c| {
         let id = &c.id;
         let cred_type = &c.cred_type;
         quote! { #id: #cred_type, }
-        });
+    });
 
     let client_params_arg = if has_params {
         quote! { params: &Params, }
@@ -530,13 +532,14 @@ fn protocol_macro(
     };
 
     // The argument list for the issuer's fill_creds callback
-    let issuer_fill_creds_args = proto_spec.show_creds.iter()
+    let issuer_fill_creds_args = proto_spec
+        .show_creds
+        .iter()
         .map(|c| {
             let cred_type = &c.cred_type;
             quote! { &mut #cred_type, }
         })
-        .chain(proto_spec.issue_creds.iter()
-        .map(|c| {
+        .chain(proto_spec.issue_creds.iter().map(|c| {
             let cred_type = &c.cred_type;
             quote! { &mut #cred_type, }
         }));
@@ -549,26 +552,27 @@ fn protocol_macro(
     };
 
     // The argument list for the issuer's authorize callback
-    let issuer_authorize_args = proto_spec.show_creds.iter()
+    let issuer_authorize_args = proto_spec
+        .show_creds
+        .iter()
         .map(|c| {
             let cred_type = &c.cred_type;
             quote! { &#cred_type, }
         })
-        .chain(proto_spec.issue_creds.iter()
-        .map(|c| {
+        .chain(proto_spec.issue_creds.iter().map(|c| {
             let cred_type = &c.cred_type;
             quote! { &#cred_type, }
-        }
-        ));
+        }));
 
     // The type of the returned credentials from handle
-    let issuer_handle_cred_rettypes = proto_spec.show_creds.iter()
+    let issuer_handle_cred_rettypes = proto_spec
+        .show_creds
+        .iter()
         .map(|c| {
             let cred_type = &c.cred_type;
             quote! { #cred_type }
         })
-        .chain(proto_spec.issue_creds.iter()
-        .map(|c| {
+        .chain(proto_spec.issue_creds.iter().map(|c| {
             let cred_type = &c.cred_type;
             quote! { #cred_type }
         }));
@@ -582,13 +586,14 @@ fn protocol_macro(
     };
 
     // Temporary: null return value for issuer's handle function
-    let issuer_handle_cred_retvals = proto_spec.show_creds.iter()
+    let issuer_handle_cred_retvals = proto_spec
+        .show_creds
+        .iter()
         .map(|c| {
             let cred_type = &c.cred_type;
             quote! { #cred_type::default() }
         })
-        .chain(proto_spec.issue_creds.iter()
-        .map(|c| {
+        .chain(proto_spec.issue_creds.iter().map(|c| {
             let cred_type = &c.cred_type;
             quote! { #cred_type::default() }
         }));
@@ -617,12 +622,10 @@ fn protocol_macro(
     };
 
     // The type of the returned credentials from finalize
-    let clientstate_finalize_cred_rettypes =
-        proto_spec.issue_creds.iter()
-        .map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { #cred_type }
-        });
+    let clientstate_finalize_cred_rettypes = proto_spec.issue_creds.iter().map(|c| {
+        let cred_type = &c.cred_type;
+        quote! { #cred_type }
+    });
 
     let clientstate_finalize_rettype = if proto_spec.issue_creds.len() > 1 {
         quote! { Result<(#(#clientstate_finalize_cred_rettypes),*),(CMZError,Self)> }
@@ -632,14 +635,11 @@ fn protocol_macro(
         quote! { Result<(),(CMZError,Self)> }
     };
 
-
     // Temporary: null return value for ClientState's finalize function
-    let clientstate_finalize_cred_retvals =
-        proto_spec.issue_creds.iter()
-        .map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { #cred_type::default() }
-        });
+    let clientstate_finalize_cred_retvals = proto_spec.issue_creds.iter().map(|c| {
+        let cred_type = &c.cred_type;
+        quote! { #cred_type::default() }
+    });
 
     let clientstate_finalize_retval = if proto_spec.issue_creds.len() > 1 {
         quote! { Ok((#(#clientstate_finalize_cred_retvals),*)) }

@@ -10,10 +10,10 @@ CMZ! { Basic<RistrettoPoint> :
 }
 
 CMZProtocol! { basic_proto,
-    A: Basic {
-        attr1: H,
-        attr2: H,
-    }, , }
+A: Basic {
+    attr1: H,
+    attr2: H,
+}, , }
 
 #[test]
 fn test_basic() {
@@ -22,7 +22,7 @@ fn test_basic() {
         b"CMZ Generator A",
     ));
 
-    let (privkey, pubkey) = Basic::gen_keys(&mut rng);
+    let (privkey, pubkey) = Basic::cmz_gen_keys(&mut rng);
 
     // Serialize and deserialize
     let privkey_bytes = bincode::serialize(&privkey).unwrap();

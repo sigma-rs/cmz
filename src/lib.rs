@@ -272,8 +272,21 @@ where
     fn get_privkey(&self) -> CMZPrivkey<Self::Point>;
 
     /// Generate random private and public keys for this credential
-    /// type.
-    fn gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>);
+    /// type.  muCMZ should be true if this credential will be issued
+    /// with muCMZ protocols (and _not_ classic CMZ protocols).
+    fn gen_keys(
+        rng: &mut impl RngCore,
+        muCMZ: bool,
+    ) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>);
+
+    /// Convenience functions for the above
+    fn cmz_gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>) {
+        Self::gen_keys(rng, false)
+    }
+
+    fn mucmz_gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>) {
+        Self::gen_keys(rng, true)
+    }
 
     /// Convenience function for creating a new Self, and loading the
     /// given private key (which will also compute the public key).
