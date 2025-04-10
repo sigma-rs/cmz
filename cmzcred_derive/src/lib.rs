@@ -493,6 +493,9 @@ fn protocol_macro(
     // authorize
     let mut handle_code_post_auth = quote! {};
 
+    // The code that will end up in finalize
+    let mut finalize_code = quote! {};
+
     // Are there any Hide or Joint attributes in _any_ credential to be
     // issued?
     let mut any_hide_joint = false;
@@ -555,6 +558,10 @@ fn protocol_macro(
                     #prepare_code
                     let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::RevealAttrMissing)?;
                 };
+                handle_code_pre_fill = quote! {
+                    #handle_code_pre_fill
+                    let #scoped_attr = request.#scoped_attr;
+                }
             }
 
             /* For each Implicit attribute: does not appear (will be filled in
@@ -566,6 +573,10 @@ fn protocol_macro(
                     #prepare_code
                     let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrMissing)?;
                 };
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
+                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrMissing)?;
+                }
             }
 
             /* For each Set and Joint attribute: the issuer's value will be set
@@ -742,64 +753,10 @@ fn protocol_macro(
         }
     };
 
-    // The argument list for the issuer's fill_creds callback
-    let issuer_fill_creds_args = proto_spec
-        .show_creds
-        .iter()
-        .map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { &mut #cred_type, }
-        })
-        .chain(proto_spec.issue_creds.iter().map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { &mut #cred_type, }
-        }));
-
-    // The return value of the callback
-    let issuer_fill_creds_params_ret = if has_params {
-        quote! { Params }
-    } else {
-        quote! { () }
-    };
-
-    // The argument list for the issuer's authorize callback
-    let issuer_authorize_args = proto_spec
-        .show_creds
-        .iter()
-        .map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { &#cred_type, }
-        })
-        .chain(proto_spec.issue_creds.iter().map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { &#cred_type, }
-        }));
-
-    // The type of the returned credentials from handle
-    let issuer_handle_cred_rettypes = proto_spec
-        .show_creds
-        .iter()
-        .map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { #cred_type }
-        })
-        .chain(proto_spec.issue_creds.iter().map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { #cred_type }
-        }));
-
-    let issuer_handle_ret = if tot_num_creds > 1 {
-        quote! { Result<(Reply, (#(#issuer_handle_cred_rettypes),*)),CMZError> }
-    } else if tot_num_creds == 1 {
-        quote! { Result<(Reply, #(#issuer_handle_cred_rettypes)*),CMZError> }
-    } else {
-        quote! { Result<Reply,CMZError> }
-    };
-
     // Build the issuer's handle function
     let issuer_func = {
         // The credential declarations for the issuer's handle function
-        let issuer_handle_cred_decls = proto_spec
+        let cred_decls = proto_spec
             .show_creds
             .iter()
             .map(|c| {
@@ -813,8 +770,30 @@ fn protocol_macro(
                 quote! { let mut #id = #cred_type::default(); }
             }));
 
+        // The type of the returned credentials from handle
+        let cred_rettypes = proto_spec
+            .show_creds
+            .iter()
+            .map(|c| {
+                let cred_type = &c.cred_type;
+                quote! { #cred_type }
+            })
+            .chain(proto_spec.issue_creds.iter().map(|c| {
+                let cred_type = &c.cred_type;
+                quote! { #cred_type }
+            }));
+
+        // The return type
+        let rettype = if tot_num_creds > 1 {
+            quote! { Result<(Reply, (#(#cred_rettypes),*)),CMZError> }
+        } else if tot_num_creds == 1 {
+            quote! { Result<(Reply, #(#cred_rettypes)*),CMZError> }
+        } else {
+            quote! { Result<Reply,CMZError> }
+        };
+
         // The return value
-        let issuer_handle_cred_retvals = proto_spec
+        let cred_retvals = proto_spec
             .show_creds
             .iter()
             .map(|c| {
@@ -824,13 +803,72 @@ fn protocol_macro(
             .chain(proto_spec.issue_creds.iter().map(|c| {
                 let id = format_ident!("cred_{}", c.id);
                 quote! { #id }
+            }));
+
+        // The argument list for the issuer's fill_creds callback
+        let fill_creds_args = proto_spec
+            .show_creds
+            .iter()
+            .map(|c| {
+                let cred_type = &c.cred_type;
+                quote! { &mut #cred_type, }
+            })
+            .chain(proto_spec.issue_creds.iter().map(|c| {
+                let cred_type = &c.cred_type;
+                quote! { &mut #cred_type, }
+            }));
+
+        // The parameters for the fill_creds callback
+        let fill_creds_params = proto_spec
+            .show_creds
+            .iter()
+            .map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                quote! { &mut #id, }
+            })
+            .chain(proto_spec.issue_creds.iter().map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                quote! { &mut #id, }
+            }));
+
+        // The return value of the callback
+        let fill_creds_params_ret = if has_params {
+            quote! { Params }
+        } else {
+            quote! { () }
+        };
+
+        // The argument list for the issuer's authorize callback
+        let authorize_args = proto_spec
+            .show_creds
+            .iter()
+            .map(|c| {
+                let cred_type = &c.cred_type;
+                quote! { &#cred_type, }
+            })
+            .chain(proto_spec.issue_creds.iter().map(|c| {
+                let cred_type = &c.cred_type;
+                quote! { &#cred_type, }
+            }));
+
+        // The parameters for the authorize callback
+        let authorize_params = proto_spec
+            .show_creds
+            .iter()
+            .map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                quote! { &#id, }
+            })
+            .chain(proto_spec.issue_creds.iter().map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                quote! { &#id, }
             }));
 
         let repf = reply_fields.field_iter();
-        let issuer_handle_retval = if tot_num_creds > 1 {
-            quote! { Ok((Reply{#(#repf,)*}, (#(#issuer_handle_cred_retvals),*))) }
+        let retval = if tot_num_creds > 1 {
+            quote! { Ok((Reply{#(#repf,)*}, (#(#cred_retvals),*))) }
         } else if tot_num_creds == 1 {
-            quote! { Ok((Reply{#(#repf,)*}, #(#issuer_handle_cred_retvals)*)) }
+            quote! { Ok((Reply{#(#repf,)*}, #(#cred_retvals)*)) }
         } else {
             quote! { Ok(Reply{#(#repf,)*}) }
         };
@@ -838,56 +876,69 @@ fn protocol_macro(
         quote! {
             pub fn handle<F,A>(rng: &mut impl RngCore,
                 request: Request, fill_creds: F, authorize: A)
-                -> #issuer_handle_ret
+                -> #rettype
             where
-                F: FnOnce(#(#issuer_fill_creds_args)*) ->
-                    Result<#issuer_fill_creds_params_ret, CMZError>,
-                A: FnOnce(#(#issuer_authorize_args)*) ->
+                F: FnOnce(#(#fill_creds_args)*) ->
+                    Result<#fill_creds_params_ret, CMZError>,
+                A: FnOnce(#(#authorize_args)*) ->
                     Result<(),CMZError>
             {
-                #(#issuer_handle_cred_decls)*
+                #(#cred_decls)*
                 #handle_code_pre_fill
+                fill_creds(#(#fill_creds_params)*)?;
                 #handle_code_post_fill
+                authorize(#(#authorize_params)*)?;
                 #handle_code_post_auth
-                #issuer_handle_retval
+                #retval
             }
         }
     };
 
-    // The type of the returned credentials from finalize
-    let clientstate_finalize_cred_rettypes = proto_spec.issue_creds.iter().map(|c| {
-        let cred_type = &c.cred_type;
-        quote! { #cred_type }
-    });
-
-    let clientstate_finalize_rettype = if proto_spec.issue_creds.len() > 1 {
-        quote! { Result<(#(#clientstate_finalize_cred_rettypes),*),(CMZError,Self)> }
-    } else if proto_spec.issue_creds.len() == 1 {
-        quote! { Result<#(#clientstate_finalize_cred_rettypes)*,(CMZError,Self)> }
-    } else {
-        quote! { Result<(),(CMZError,Self)> }
-    };
-
-    // Temporary: null return value for ClientState's finalize function
-    let clientstate_finalize_cred_retvals = proto_spec.issue_creds.iter().map(|c| {
-        let cred_type = &c.cred_type;
-        quote! { #cred_type::default() }
-    });
-
-    let clientstate_finalize_retval = if proto_spec.issue_creds.len() > 1 {
-        quote! { Ok((#(#clientstate_finalize_cred_retvals),*)) }
-    } else if proto_spec.issue_creds.len() == 1 {
-        quote! { Ok(#(#clientstate_finalize_cred_retvals)*) }
-    } else {
-        quote! { Ok(()) }
-    };
-
     // Build the ClientState's finalize function
-    let clientstate_finalize_func = quote! {
-        impl ClientState {
-            pub fn finalize(self, reply: Reply)
-                -> #clientstate_finalize_rettype {
-                #clientstate_finalize_retval
+    let clientstate_finalize_func = {
+        // The credential declarations for the client's finalize function
+        let cred_decls = proto_spec.issue_creds.iter().map(|c| {
+            let id = format_ident!("cred_{}", c.id);
+            let cred_type = &c.cred_type;
+            quote! { let mut #id = #cred_type::default(); }
+        });
+
+        // The type of the returned credentials from finalize
+        let cred_rettypes = proto_spec.issue_creds.iter().map(|c| {
+            let cred_type = &c.cred_type;
+            quote! { #cred_type }
+        });
+
+        let rettype = if proto_spec.issue_creds.len() > 1 {
+            quote! { Result<(#(#cred_rettypes),*),(CMZError,Self)> }
+        } else if proto_spec.issue_creds.len() == 1 {
+            quote! { Result<#(#cred_rettypes)*,(CMZError,Self)> }
+        } else {
+            quote! { Result<(),(CMZError,Self)> }
+        };
+
+        // Return value for ClientState's finalize function
+        let cred_retvals = proto_spec.issue_creds.iter().map(|c| {
+            let id = format_ident!("cred_{}", c.id);
+            quote! { #id }
+        });
+
+        let retval = if proto_spec.issue_creds.len() > 1 {
+            quote! { Ok((#(#cred_retvals),*)) }
+        } else if proto_spec.issue_creds.len() == 1 {
+            quote! { Ok(#(#cred_retvals)*) }
+        } else {
+            quote! { Ok(()) }
+        };
+
+        quote! {
+            impl ClientState {
+                pub fn finalize(self, reply: Reply)
+                    -> #rettype {
+                    #(#cred_decls)*
+                    #finalize_code
+                    #retval
+                }
             }
         }
     };
