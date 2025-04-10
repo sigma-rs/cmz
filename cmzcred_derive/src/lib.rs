@@ -16,7 +16,7 @@ the CMZCredential trait for the declared credential.
 
 use darling::FromDeriveInput;
 use proc_macro::{Span, TokenStream};
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
@@ -278,7 +278,7 @@ impl<ShowOrIssue: Parse> Parse for AttrSpec<ShowOrIssue> {
 struct CredSpec<ShowOrIssue: Parse> {
     id: Ident,
     cred_type: Ident,
-    attrs: HashMap<String, ShowOrIssue>,
+    attrs: HashMap<Ident, ShowOrIssue>,
 }
 
 impl<ShowOrIssue: Parse + Copy> Parse for CredSpec<ShowOrIssue> {
@@ -290,9 +290,9 @@ impl<ShowOrIssue: Parse + Copy> Parse for CredSpec<ShowOrIssue> {
         braced!(content in input);
         let attrspecs: Punctuated<AttrSpec<ShowOrIssue>, Token![,]> =
             content.parse_terminated(AttrSpec::<ShowOrIssue>::parse, Token![,])?;
-        let mut attrs: HashMap<String, ShowOrIssue> = HashMap::new();
+        let mut attrs: HashMap<Ident, ShowOrIssue> = HashMap::new();
         for attrspec in attrspecs.iter() {
-            attrs.insert(attrspec.attr.to_string(), attrspec.spec);
+            attrs.insert(attrspec.attr.clone(), attrspec.spec);
         }
         Ok(Self {
             id,
@@ -481,6 +481,18 @@ fn protocol_macro(
     // The code that will end up in prepare
     let mut prepare_code = quote! {};
 
+    // The code that will end up in handle, before the call to
+    // fill_creds
+    let mut handle_code_pre_fill = quote! {};
+
+    // The code that will end up in handle, after the call to
+    // fill_creds but before the call to authorize
+    let mut handle_code_post_fill = quote! {};
+
+    // The code that will end up in handle, after the call to
+    // authorize
+    let mut handle_code_post_auth = quote! {};
+
     // Are there any Hide or Joint attributes in _any_ credential to be
     // issued?
     let mut any_hide_joint = false;
@@ -488,7 +500,12 @@ fn protocol_macro(
         // Are there any Hide or Joint attributes in this particular
         // credential to be issued?
         let mut cred_hide_joint = false;
+        let iss_cred_id = format_ident!("cred_{}", iss_cred.id);
         for (attr, &spec) in iss_cred.attrs.iter() {
+            // The scoped attribute name, which will be the credential
+            // name, underscore, attribute name.
+            let scoped_attr = format_ident!("attr_{}_{}", iss_cred.id, attr);
+
             if spec == IssueSpec::Hide || spec == IssueSpec::Joint {
                 cred_hide_joint = true;
             }
@@ -532,16 +549,43 @@ fn protocol_macro(
             /* For each Reveal attribute: include attr in Request (client will
                pass the value into prepare)
             */
+            if spec == IssueSpec::Reveal {
+                request_fields.push_scalar(&scoped_attr.to_string());
+                prepare_code = quote! {
+                    #prepare_code
+                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::RevealAttrMissing)?;
+                };
+            }
 
             /* For each Implicit attribute: does not appear (will be filled in
                by fill_creds on the issuer side and passed into prepare on the
                client side)
             */
+            if spec == IssueSpec::Implicit {
+                prepare_code = quote! {
+                    #prepare_code
+                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrMissing)?;
+                };
+            }
 
             /* For each Set and Joint attribute: the issuer's value will be set
               by fill_creds (for Set) or by handle (for Joint).  Include the
               value in Reply.
             */
+            if spec == IssueSpec::Set {
+                reply_fields.push_scalar(&scoped_attr.to_string());
+                handle_code_post_auth = quote! {
+                    #handle_code_post_auth
+                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::SetAttrMissing)?;
+                };
+            }
+            if spec == IssueSpec::Joint {
+                reply_fields.push_scalar(&scoped_attr.to_string());
+                handle_code_post_auth = quote! {
+                    #handle_code_post_auth
+                    let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
+                };
+            }
         }
         any_hide_joint |= cred_hide_joint;
     }
@@ -666,13 +710,13 @@ fn protocol_macro(
     // immutable reference for each credential to be shown, and an owned
     // value for each credential to be issued.
     let client_show_args = proto_spec.show_creds.iter().map(|c| {
-        let id = &c.id;
+        let id = format_ident!("cred_{}", c.id);
         let cred_type = &c.cred_type;
         quote! { #id: &#cred_type, }
     });
 
     let client_issue_args = proto_spec.issue_creds.iter().map(|c| {
-        let id = &c.id;
+        let id = format_ident!("cred_{}", c.id);
         let cred_type = &c.cred_type;
         quote! { #id: #cred_type, }
     });
@@ -752,39 +796,61 @@ fn protocol_macro(
         quote! { Result<Reply,CMZError> }
     };
 
-    // Temporary: null return value for issuer's handle function
-    let issuer_handle_cred_retvals = proto_spec
-        .show_creds
-        .iter()
-        .map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { #cred_type::default() }
-        })
-        .chain(proto_spec.issue_creds.iter().map(|c| {
-            let cred_type = &c.cred_type;
-            quote! { #cred_type::default() }
-        }));
-
-    let issuer_handle_retval = if tot_num_creds > 1 {
-        quote! { Ok((Reply{}, (#(#issuer_handle_cred_retvals),*))) }
-    } else if tot_num_creds == 1 {
-        quote! { Ok((Reply{}, #(#issuer_handle_cred_retvals)*)) }
-    } else {
-        quote! { Ok(Reply{}) }
-    };
-
     // Build the issuer's handle function
-    let issuer_func = quote! {
-        pub fn handle<F,A>(rng: &mut impl RngCore,
-            request: Request, fill_creds: F, authorize: A)
-            -> #issuer_handle_ret
-        where
-            F: FnOnce(#(#issuer_fill_creds_args)*) ->
-                Result<#issuer_fill_creds_params_ret, CMZError>,
-            A: FnOnce(#(#issuer_authorize_args)*) ->
-                Result<(),CMZError>
-        {
-            #issuer_handle_retval
+    let issuer_func = {
+        // The credential declarations for the issuer's handle function
+        let issuer_handle_cred_decls = proto_spec
+            .show_creds
+            .iter()
+            .map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                let cred_type = &c.cred_type;
+                quote! { let mut #id = #cred_type::default(); }
+            })
+            .chain(proto_spec.issue_creds.iter().map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                let cred_type = &c.cred_type;
+                quote! { let mut #id = #cred_type::default(); }
+            }));
+
+        // The return value
+        let issuer_handle_cred_retvals = proto_spec
+            .show_creds
+            .iter()
+            .map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                quote! { #id }
+            })
+            .chain(proto_spec.issue_creds.iter().map(|c| {
+                let id = format_ident!("cred_{}", c.id);
+                quote! { #id }
+            }));
+
+        let repf = reply_fields.field_iter();
+        let issuer_handle_retval = if tot_num_creds > 1 {
+            quote! { Ok((Reply{#(#repf,)*}, (#(#issuer_handle_cred_retvals),*))) }
+        } else if tot_num_creds == 1 {
+            quote! { Ok((Reply{#(#repf,)*}, #(#issuer_handle_cred_retvals)*)) }
+        } else {
+            quote! { Ok(Reply{#(#repf,)*}) }
+        };
+
+        quote! {
+            pub fn handle<F,A>(rng: &mut impl RngCore,
+                request: Request, fill_creds: F, authorize: A)
+                -> #issuer_handle_ret
+            where
+                F: FnOnce(#(#issuer_fill_creds_args)*) ->
+                    Result<#issuer_fill_creds_params_ret, CMZError>,
+                A: FnOnce(#(#issuer_authorize_args)*) ->
+                    Result<(),CMZError>
+            {
+                #(#issuer_handle_cred_decls)*
+                #handle_code_pre_fill
+                #handle_code_post_fill
+                #handle_code_post_auth
+                #issuer_handle_retval
+            }
         }
     };
 
