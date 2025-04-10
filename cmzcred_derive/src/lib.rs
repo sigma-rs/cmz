@@ -15,8 +15,8 @@ the CMZCredential trait for the declared credential.
 */
 
 use darling::FromDeriveInput;
-use proc_macro::TokenStream;
-use quote::quote;
+use proc_macro::{Span, TokenStream};
+use quote::{quote, ToTokens};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
@@ -379,6 +379,59 @@ impl Parse for ProtoSpec {
     }
 }
 
+// Names and types of fields that might end up in a generated struct
+enum StructField {
+    Scalar(Ident),
+    Point(Ident),
+}
+
+// Convenience functions to create StructField items
+impl StructField {
+    pub fn scalar(s: &str) -> Self {
+        Self::Scalar(Ident::new(s, Span::call_site().into()))
+    }
+    pub fn point(s: &str) -> Self {
+        Self::Point(Ident::new(s, Span::call_site().into()))
+    }
+}
+
+// A list of StructField items
+#[derive(Default)]
+struct StructFieldList {
+    fields: Vec<StructField>,
+}
+
+impl StructFieldList {
+    pub fn push_scalar(&mut self, s: &str) {
+        self.fields.push(StructField::scalar(s));
+    }
+    pub fn push_point(&mut self, s: &str) {
+        self.fields.push(StructField::point(s));
+    }
+    /// Output an iterator consisting of the field names
+    pub fn field_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
+        self.fields.iter().map(|f| match f {
+            StructField::Scalar(id) => id,
+            StructField::Point(id) => id,
+        })
+    }
+    /// Output a ToTokens of the fields as they would appear in a struct
+    /// definition (including the serde_as annotations)
+    pub fn field_decls(&self) -> impl ToTokens {
+        let decls = self.fields.iter().map(|f| match f {
+            StructField::Scalar(id) => quote! {
+                #[serde_as(as = "SerdeScalar")]
+                pub #id: Scalar,
+            },
+            StructField::Point(id) => quote! {
+                #[serde_as(as = "SerdePoint")]
+                pub #id: Point,
+            },
+        });
+        quote! { #(#decls)* }
+    }
+}
+
 // This is where the main work is done.  The six macros in the
 // CMZProtocol macro family (below) all call this function, with
 // different values for the bools.
@@ -411,6 +464,101 @@ fn protocol_macro(
         quote! {}
     };
 
+    /* Credential issuing
+
+       For each attribute of each credential to be issued, handle it
+       according to its IssueSpec:
+    */
+    // The fields that will end up in the ClientState
+    let mut clientstate_fields = StructFieldList::default();
+
+    // The fields that will end up in the Request
+    let mut request_fields = StructFieldList::default();
+
+    // The fields that will end up in the Reply
+    let mut reply_fields = StructFieldList::default();
+
+    // The code that will end up in prepare
+    let mut prepare_code = quote! {};
+
+    // Are there any Hide or Joint attributes in _any_ credential to be
+    // issued?
+    let mut any_hide_joint = false;
+    for iss_cred in proto_spec.issue_creds.iter() {
+        // Are there any Hide or Joint attributes in this particular
+        // credential to be issued?
+        let mut cred_hide_joint = false;
+        for (attr, &spec) in iss_cred.attrs.iter() {
+            if spec == IssueSpec::Hide || spec == IssueSpec::Joint {
+                cred_hide_joint = true;
+            }
+
+            /* For each Hide and Joint attribute (for CMZ): Compute an
+               exponential El Gamal encryption (of the attribute) E_attr =
+               (r_attr*B, attr*B + r_attr*D) for random r_attr.  Include E_attr
+               in the Request, and attr, r_attr, and E_attr in the CliProof.
+               Hide attributes will be passed into prepare on the client side;
+               Joint attributes (client contribution) will be generated randomly
+               by prepare on the client side, and (issuer contribution) by
+               handle on the issuer side.
+            */
+
+            /* For all Hide and Joint attributes of a single credential to be
+               isued (for CMZ): the issuer chooses a random b, computes
+               P = b*B, E_Q = b*x_0*B + \sum_{hide,joint} b*x_attr*E_attr
+               + (0,\sum_{implicit,reveal,set,joint} b*x_attr*attr*B)
+               (note that E_Q and each E_attr are all pairs of Points; the
+               scalar multiplication is componentwise).  Include P, E_Q in
+               Reply. For each such attribute, include t_attr = b*x_attr and
+               T_attr = b*X_attr = t_attr*A in Reply and IssProof.  The client
+               will compute Q = E_Q[1] - d*E_Q[0].
+            */
+
+            /* For all Hide and Joint attributes of a single credential to be
+               issued (for µCMZ): The client chooses a random s, computes C =
+               (\sum_{hide,joint} attr*X_attr) + s*A, where X_attr is the
+               public key for that attribute.  Include s in the ClientState, C
+               in the Request, and the attributes, s, and C in the CliProof.
+               Hide attributes will be passed into prepare on the client side;
+               Joint attributes (client contribution) will be generated randomly
+               by prepare on the client side.  On the issuer side, handle will
+               pick a random b, compute P = b*A, R = b*(x_0*A + C) +
+               \sum_{implicit,reveal,set,joint} x_attr*attr*P.  Include P
+               and R in Reply, and x_0, b, P, R, C in IssProof.  For each
+               implicit,reveal,set,joint attribute, include x_attr and P_attr =
+               attr*P in IssProof.  The client will compute Q = R - s*P.
+            */
+
+            /* For each Reveal attribute: include attr in Request (client will
+               pass the value into prepare)
+            */
+
+            /* For each Implicit attribute: does not appear (will be filled in
+               by fill_creds on the issuer side and passed into prepare on the
+               client side)
+            */
+
+            /* For each Set and Joint attribute: the issuer's value will be set
+              by fill_creds (for Set) or by handle (for Joint).  Include the
+              value in Reply.
+            */
+        }
+        any_hide_joint |= cred_hide_joint;
+    }
+
+    /* If there are _any_ Hide or Joint attributes in CMZ (as opposed to
+       µCMZ), the client generates an El Gamal keypair (d, D=d*B).
+       Include d in the ClientState and D in the Request.
+    */
+    if any_hide_joint && !use_muCMZ {
+        clientstate_fields.push_scalar("d");
+        request_fields.push_point("D");
+        prepare_code = quote! {
+            let (d,D) = bp.keypairB(&mut *rng);
+            #prepare_code
+        }
+    }
+
     // Build the Params struct, if we have params
     let params_struct = if has_params {
         let param_list = &proto_spec.params;
@@ -424,79 +572,92 @@ fn protocol_macro(
     };
 
     // Build the ClientState struct
-    let client_state = quote! {
-        #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
-        pub struct ClientState {
-        }
-
-        impl TryFrom<&[u8]> for ClientState {
-            type Error = bincode::Error;
-
-            fn try_from(bytes: &[u8]) -> bincode::Result<ClientState> {
-                bincode::deserialize::<ClientState>(bytes)
+    let client_state = {
+        let decls = clientstate_fields.field_decls();
+        quote! {
+            #[serde_as]
+            #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
+            pub struct ClientState {
+                #decls
             }
-        }
 
-        impl From<&ClientState> for Vec<u8> {
-            fn from(req: &ClientState) -> Vec<u8> {
-                bincode::serialize(req).unwrap()
+            impl TryFrom<&[u8]> for ClientState {
+                type Error = bincode::Error;
+
+                fn try_from(bytes: &[u8]) -> bincode::Result<ClientState> {
+                    bincode::deserialize::<ClientState>(bytes)
+                }
             }
-        }
 
-        impl ClientState {
-            pub fn as_bytes(&self) -> Vec<u8> {
-                self.into()
+            impl From<&ClientState> for Vec<u8> {
+                fn from(req: &ClientState) -> Vec<u8> {
+                    bincode::serialize(req).unwrap()
+                }
+            }
+
+            impl ClientState {
+                pub fn as_bytes(&self) -> Vec<u8> {
+                    self.into()
+                }
             }
         }
     };
 
     // Build the Request and Reply structs
-    let messages = quote! {
-        #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
-        pub struct Request {
-        }
-
-        impl TryFrom<&[u8]> for Request {
-            type Error = bincode::Error;
-
-            fn try_from(bytes: &[u8]) -> bincode::Result<Request> {
-                bincode::deserialize::<Request>(bytes)
+    let messages = {
+        let reqdecls = request_fields.field_decls();
+        let repdecls = reply_fields.field_decls();
+        quote! {
+            #[serde_as]
+            #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
+            pub struct Request {
+                #reqdecls
             }
-        }
 
-        impl From<&Request> for Vec<u8> {
-            fn from(req: &Request) -> Vec<u8> {
-                bincode::serialize(req).unwrap()
+            impl TryFrom<&[u8]> for Request {
+                type Error = bincode::Error;
+
+                fn try_from(bytes: &[u8]) -> bincode::Result<Request> {
+                    bincode::deserialize::<Request>(bytes)
+                }
             }
-        }
 
-        impl Request {
-            pub fn as_bytes(&self) -> Vec<u8> {
-                self.into()
+            impl From<&Request> for Vec<u8> {
+                fn from(req: &Request) -> Vec<u8> {
+                    bincode::serialize(req).unwrap()
+                }
             }
-        }
 
-        #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
-        pub struct Reply {
-        }
-
-        impl TryFrom<&[u8]> for Reply {
-            type Error = bincode::Error;
-
-            fn try_from(bytes: &[u8]) -> bincode::Result<Reply> {
-                bincode::deserialize::<Reply>(bytes)
+            impl Request {
+                pub fn as_bytes(&self) -> Vec<u8> {
+                    self.into()
+                }
             }
-        }
 
-        impl From<&Reply> for Vec<u8> {
-            fn from(rep: &Reply) -> Vec<u8> {
-                bincode::serialize(rep).unwrap()
+            #[serde_as]
+            #[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
+            pub struct Reply {
+                #repdecls
             }
-        }
 
-        impl Reply {
-            pub fn as_bytes(&self) -> Vec<u8> {
-                self.into()
+            impl TryFrom<&[u8]> for Reply {
+                type Error = bincode::Error;
+
+                fn try_from(bytes: &[u8]) -> bincode::Result<Reply> {
+                    bincode::deserialize::<Reply>(bytes)
+                }
+            }
+
+            impl From<&Reply> for Vec<u8> {
+                fn from(rep: &Reply) -> Vec<u8> {
+                    bincode::serialize(rep).unwrap()
+                }
+            }
+
+            impl Reply {
+                pub fn as_bytes(&self) -> Vec<u8> {
+                    self.into()
+                }
             }
         }
     };
@@ -523,11 +684,17 @@ fn protocol_macro(
     };
 
     // Build the client's prepare function
-    let client_func = quote! {
-        pub fn prepare(rng: &mut impl RngCore,
-            #(#client_show_args)* #(#client_issue_args)* #client_params_arg)
-                -> Result<(Request, ClientState),CMZError> {
-            Ok((Request{}, ClientState{}))
+    let client_func = {
+        let reqf = request_fields.field_iter();
+        let csf = clientstate_fields.field_iter();
+        quote! {
+            pub fn prepare(rng: &mut impl RngCore,
+                #(#client_show_args)* #(#client_issue_args)* #client_params_arg)
+                    -> Result<(Request, ClientState),CMZError> {
+                let bp = cmz_basepoints::<Point>();
+                #prepare_code
+                Ok((Request{#(#reqf,)*}, ClientState{#(#csf,)*}))
+            }
         }
     };
 

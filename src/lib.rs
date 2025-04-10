@@ -4,7 +4,7 @@
 
 pub use cmzcred_derive::*;
 use core::any::Any;
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use generic_static::StaticTypeMap;
 use group::prime::PrimeGroup;
 use group::{Group, GroupEncoding, WnafBase, WnafScalar};
@@ -102,7 +102,7 @@ const WNAF_SIZE: usize = 6;
 // A struct (generic over G) holding the two CMZ bases, and their Wnaf
 // basepoint tables
 #[derive(Clone)]
-struct CMZBasepoints<G: Group> {
+pub struct CMZBasepoints<G: Group> {
     A: G,
     B: G,
     A_TABLE: WnafBase<G, WNAF_SIZE>,
@@ -110,7 +110,7 @@ struct CMZBasepoints<G: Group> {
 }
 
 impl<G: Group> CMZBasepoints<G> {
-    fn init(generator_A: G) -> Self {
+    pub fn init(generator_A: G) -> Self {
         let A = generator_A;
         let B = G::generator();
         let A_TABLE = WnafBase::new(A);
@@ -123,14 +123,24 @@ impl<G: Group> CMZBasepoints<G> {
         }
     }
 
-    fn mulA(&self, s: &G::Scalar) -> G {
+    pub fn mulA(&self, s: &G::Scalar) -> G {
         let wnaf_s = WnafScalar::<G::Scalar, WNAF_SIZE>::new(&s);
         &self.A_TABLE * &wnaf_s
     }
 
-    fn mulB(&self, s: &G::Scalar) -> G {
+    pub fn mulB(&self, s: &G::Scalar) -> G {
         let wnaf_s = WnafScalar::<G::Scalar, WNAF_SIZE>::new(&s);
         &self.B_TABLE * &wnaf_s
+    }
+
+    pub fn keypairA(&self, rng: &mut impl RngCore) -> (G::Scalar, G) {
+        let x = G::Scalar::random(&mut *rng);
+        (x, self.mulA(&x))
+    }
+
+    pub fn keypairB(&self, rng: &mut impl RngCore) -> (G::Scalar, G) {
+        let x = G::Scalar::random(&mut *rng);
+        (x, self.mulB(&x))
     }
 }
 
@@ -218,6 +228,11 @@ fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> 
 pub fn cmz_group_init<G: PrimeGroup>(generator_A: G) {
     let bp = CMZBasepoints::<G>::init(generator_A);
     load_bp(Some(bp));
+}
+
+/// Get the loaded CMZBasepoints for the given group
+pub fn cmz_basepoints<G: PrimeGroup>() -> &'static CMZBasepoints<G> {
+    load_bp(None)
 }
 
 /// Compute a public key from a private key
