@@ -405,6 +405,7 @@ impl Parse for ProtoSpec {
 enum StructField {
     Scalar(Ident),
     Point(Ident),
+    EncPoint(Ident),
 }
 
 // Convenience functions to create StructField items
@@ -414,6 +415,9 @@ impl StructField {
     }
     pub fn point(s: &str) -> Self {
         Self::Point(Ident::new(s, Span::call_site().into()))
+    }
+    pub fn encpoint(s: &str) -> Self {
+        Self::EncPoint(Ident::new(s, Span::call_site().into()))
     }
 }
 
@@ -430,11 +434,15 @@ impl StructFieldList {
     pub fn push_point(&mut self, s: &str) {
         self.fields.push(StructField::point(s));
     }
+    pub fn push_encpoint(&mut self, s: &str) {
+        self.fields.push(StructField::encpoint(s));
+    }
     /// Output an iterator consisting of the field names
     pub fn field_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
         self.fields.iter().map(|f| match f {
             StructField::Scalar(id) => id,
             StructField::Point(id) => id,
+            StructField::EncPoint(id) => id,
         })
     }
     /// Output a ToTokens of the fields as they would appear in a struct
@@ -448,6 +456,10 @@ impl StructFieldList {
             StructField::Point(id) => quote! {
                 #[serde_as(as = "SerdePoint")]
                 pub #id: Point,
+            },
+            StructField::EncPoint(id) => quote! {
+                #[serde_as(as = "(SerdePoint, SerdePoint)")]
+                pub #id: (Point, Point),
             },
         });
         quote! { #(#decls)* }
@@ -539,15 +551,52 @@ fn protocol_macro(
                 cred_hide_joint = true;
             }
 
-            /* For each Hide and Joint attribute (for CMZ): Compute an
-               exponential El Gamal encryption (of the attribute) E_attr =
-               (r_attr*B, attr*B + r_attr*D) for random r_attr.  Include E_attr
-               in the Request, and attr, r_attr, and E_attr in the CliProof.
-               Hide attributes will be passed into prepare on the client side;
-               Joint attributes (client contribution) will be generated randomly
-               by prepare on the client side, and (issuer contribution) by
-               handle on the issuer side.
-            */
+            if !use_muCMZ && (spec == IssueSpec::Hide || spec == IssueSpec::Joint) {
+                /* For each Hide and Joint attribute (for CMZ): Compute an
+                   exponential El Gamal encryption (of the attribute) E_attr =
+                   (r_attr*B, attr*B + r_attr*D) for random r_attr.  Include E_attr
+                   in the Request, attr in the ClientState, and attr,
+                   r_attr, and E_attr in the CliProof.  Hide attributes
+                   will be passed into prepare on the client side; Joint
+                   attributes (client contribution) will be generated
+                   randomly by prepare on the client side, and (issuer
+                   contribution) by handle on the issuer side.
+                */
+                let enc_attr = format_ident!("E_{}", scoped_attr);
+                let r_attr = format_ident!("r_{}", scoped_attr);
+                request_fields.push_encpoint(&enc_attr.to_string());
+                clientstate_fields.push_scalar(&scoped_attr.to_string());
+                if spec == IssueSpec::Hide {
+                    prepare_code = quote! {
+                        #prepare_code
+                        let #scoped_attr =
+                        #iss_cred_id.#attr.ok_or(CMZError::HideAttrMissing(#cred_str,
+                        #attr_str))?;
+                    };
+                } else {
+                    prepare_code = quote! {
+                        #prepare_code
+                        let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
+                    };
+                    reply_fields.push_scalar(&scoped_attr.to_string());
+                    handle_code_pre_fill = quote! {
+                        #handle_code_pre_fill
+                        let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
+                    };
+                    finalize_code = quote! {
+                        #finalize_code
+                        let #scoped_attr = self.#scoped_attr + reply.#scoped_attr;
+                        #iss_cred_id.#attr = Some(#scoped_attr);
+                    };
+                }
+                prepare_code = quote! {
+                    #prepare_code
+                    let #r_attr = <Scalar as ff::Field>::random(&mut *rng);
+                    let #enc_attr = (bp.mulB(&#r_attr),
+                        bp.mulB(&#scoped_attr) +
+                        #r_attr * D);
+                };
+            }
 
             /* For all Hide and Joint attributes of a single credential to be
                isued (for CMZ): the issuer chooses a random b, computes
@@ -611,9 +660,8 @@ fn protocol_macro(
                 }
             }
 
-            /* For each Set and Joint attribute: the issuer's value will be set
-              by fill_creds (for Set) or by handle (for Joint).  Include the
-              value in Reply.
+            /* For each Set attribute: the issuer's value will be set
+              by fill_creds.  Include the value in Reply.
             */
             if spec == IssueSpec::Set {
                 reply_fields.push_scalar(&scoped_attr.to_string());
@@ -628,13 +676,6 @@ fn protocol_macro(
                     let #scoped_attr = reply.#scoped_attr;
                     #iss_cred_id.#attr = Some(#scoped_attr);
                 }
-            }
-            if spec == IssueSpec::Joint {
-                reply_fields.push_scalar(&scoped_attr.to_string());
-                handle_code_post_auth = quote! {
-                    #handle_code_post_auth
-                    let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
-                };
             }
         }
         any_hide_joint |= cred_hide_joint;
