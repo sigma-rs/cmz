@@ -4,7 +4,6 @@
 
 use cmz::*;
 use curve25519_dalek::ristretto::RistrettoPoint as G;
-use ff::PrimeField;
 use group::Group;
 use rand_core::RngCore;
 use sha2::Sha512;
