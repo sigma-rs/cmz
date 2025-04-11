@@ -603,7 +603,8 @@ fn protocol_macro(
 
             if spec == IssueSpec::Hide {
                 /* For each Hide attribute, the attribute (passed in the
-                   prepare) goes in the ClientState.
+                   prepare) goes in the ClientState, and from there to
+                   to the generated credential in finalize.
                 */
                 clientstate_fields.push_scalar(&scoped_attr.to_string());
                 prepare_code = quote! {
@@ -612,6 +613,10 @@ fn protocol_macro(
                     #iss_cred_id.#attr.ok_or(CMZError::HideAttrMissing(#cred_str,
                     #attr_str))?;
                 };
+                finalize_code = quote! {
+                    #finalize_code
+                    #iss_cred_id.#attr = Some(self.#scoped_attr);
+                }
             }
 
             if spec == IssueSpec::Joint {
@@ -667,10 +672,12 @@ fn protocol_macro(
             }
 
             /* For each Reveal attribute: include attr in Request (client will
-               pass the value into prepare).
+               pass the value into prepare).  Also store it in the
+               ClientState.
             */
             if spec == IssueSpec::Reveal {
                 request_fields.push_scalar(&scoped_attr.to_string());
+                clientstate_fields.push_scalar(&scoped_attr.to_string());
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
@@ -681,13 +688,18 @@ fn protocol_macro(
                     #handle_code_pre_fill
                     let #scoped_attr = request.#scoped_attr;
                 };
+                finalize_code = quote! {
+                    #finalize_code
+                    #iss_cred_id.#attr = Some(self.#scoped_attr);
+                };
             }
 
-            /* For each Implicit attribute: does not appear (will be filled in
-               by fill_creds on the issuer side and passed into prepare on the
-               client side)
+            /* For each Implicit attribute: store it in ClientState
+               (will be passed into prepare) on the client side, and
+               will be filled in by fill_creds on the issuer side.
             */
             if spec == IssueSpec::Implicit {
+                clientstate_fields.push_scalar(&scoped_attr.to_string());
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
@@ -699,7 +711,11 @@ fn protocol_macro(
                     let #scoped_attr =
                     #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrIssMissing(#cred_str,
                     #attr_str))?;
-                }
+                };
+                finalize_code = quote! {
+                    #finalize_code
+                    #iss_cred_id.#attr = Some(self.#scoped_attr);
+                };
             }
 
             /* For each Set attribute: the issuer's value will be set
@@ -715,8 +731,7 @@ fn protocol_macro(
                 };
                 finalize_code = quote! {
                     #finalize_code
-                    let #scoped_attr = reply.#scoped_attr;
-                    #iss_cred_id.#attr = Some(#scoped_attr);
+                    #iss_cred_id.#attr = Some(reply.#scoped_attr);
                 }
             }
 
