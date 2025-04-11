@@ -233,6 +233,16 @@ impl Parse for ShowSpec {
     }
 }
 
+impl ShowSpec {
+    fn abbr(&self) -> &'static str {
+        match self {
+            Self::Hide => "H",
+            Self::Reveal => "R",
+            Self::Implicit => "I",
+        }
+    }
+}
+
 // The possible attribute specifications for a credential to be issued
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum IssueSpec {
@@ -253,6 +263,18 @@ impl Parse for IssueSpec {
             "S" | "SET" => Ok(Self::Set),
             "J" | "JOINT" => Ok(Self::Joint),
             _ => Err(input.error("Unknown attribute spec for issued credential")),
+        }
+    }
+}
+
+impl IssueSpec {
+    fn abbr(&self) -> &'static str {
+        match self {
+            Self::Hide => "H",
+            Self::Reveal => "R",
+            Self::Implicit => "I",
+            Self::Set => "S",
+            Self::Joint => "J",
         }
     }
 }
@@ -505,9 +527,13 @@ fn protocol_macro(
         let mut cred_hide_joint = false;
         let iss_cred_id = format_ident!("cred_{}", iss_cred.id);
         for (attr, &spec) in iss_cred.attrs.iter() {
-            // The scoped attribute name, which will be the credential
-            // name, underscore, attribute name.
-            let scoped_attr = format_ident!("attr_{}_{}", iss_cred.id, attr);
+            // String versions of the credential name and the attribute
+            // name
+            let cred_str = iss_cred.id.to_string();
+            let attr_str = attr.to_string();
+
+            // The scoped attribute name
+            let scoped_attr = format_ident!("iss_{}attr_{}_{}", spec.abbr(), iss_cred.id, attr);
 
             if spec == IssueSpec::Hide || spec == IssueSpec::Joint {
                 cred_hide_joint = true;
@@ -556,7 +582,9 @@ fn protocol_macro(
                 request_fields.push_scalar(&scoped_attr.to_string());
                 prepare_code = quote! {
                     #prepare_code
-                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::RevealAttrMissing)?;
+                    let #scoped_attr =
+                    #iss_cred_id.#attr.ok_or(CMZError::RevealAttrMissing(#cred_str,
+                    #attr_str))?;
                 };
                 handle_code_pre_fill = quote! {
                     #handle_code_pre_fill
@@ -571,11 +599,15 @@ fn protocol_macro(
             if spec == IssueSpec::Implicit {
                 prepare_code = quote! {
                     #prepare_code
-                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrMissing)?;
+                    let #scoped_attr =
+                    #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrCliMissing(#cred_str,
+                    #attr_str))?;
                 };
                 handle_code_post_fill = quote! {
                     #handle_code_post_fill
-                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrMissing)?;
+                    let #scoped_attr =
+                    #iss_cred_id.#attr.ok_or(CMZError::ImplicitAttrIssMissing(#cred_str,
+                    #attr_str))?;
                 }
             }
 
@@ -587,8 +619,15 @@ fn protocol_macro(
                 reply_fields.push_scalar(&scoped_attr.to_string());
                 handle_code_post_auth = quote! {
                     #handle_code_post_auth
-                    let #scoped_attr = #iss_cred_id.#attr.ok_or(CMZError::SetAttrMissing)?;
+                    let #scoped_attr =
+                    #iss_cred_id.#attr.ok_or(CMZError::SetAttrMissing(#cred_str,
+                    #attr_str))?;
                 };
+                finalize_code = quote! {
+                    #finalize_code
+                    let #scoped_attr = reply.#scoped_attr;
+                    #iss_cred_id.#attr = Some(#scoped_attr);
+                }
             }
             if spec == IssueSpec::Joint {
                 reply_fields.push_scalar(&scoped_attr.to_string());
