@@ -59,6 +59,7 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
         }
     }
     let num_attrs = attrs.len();
+    let attr_index = 0..num_attrs;
     let name = &ast.ident;
     let errmsg = format!("Invalid attribute name for {} CMZ credential", name);
 
@@ -76,6 +77,13 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
 
             fn num_attrs() -> usize {
                 return #num_attrs;
+            }
+
+            fn attr_num(attrname: &str) -> usize {
+                match attrname {
+                    #( #attrs => #attr_index, )*
+                    _ => panic!(#errmsg),
+                }
             }
 
             fn attr(&self, attrname: &str) -> &Option<Self::Scalar> {
@@ -406,6 +414,7 @@ enum StructField {
     Scalar(Ident),
     Point(Ident),
     EncPoint(Ident),
+    Pubkey(Ident),
 }
 
 // Convenience functions to create StructField items
@@ -418,6 +427,9 @@ impl StructField {
     }
     pub fn encpoint(s: &str) -> Self {
         Self::EncPoint(Ident::new(s, Span::call_site().into()))
+    }
+    pub fn pubkey(s: &str) -> Self {
+        Self::Pubkey(Ident::new(s, Span::call_site().into()))
     }
 }
 
@@ -437,12 +449,16 @@ impl StructFieldList {
     pub fn push_encpoint(&mut self, s: &str) {
         self.fields.push(StructField::encpoint(s));
     }
+    pub fn push_pubkey(&mut self, s: &str) {
+        self.fields.push(StructField::pubkey(s));
+    }
     /// Output an iterator consisting of the field names
     pub fn field_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
         self.fields.iter().map(|f| match f {
             StructField::Scalar(id) => id,
             StructField::Point(id) => id,
             StructField::EncPoint(id) => id,
+            StructField::Pubkey(id) => id,
         })
     }
     /// Output a ToTokens of the fields as they would appear in a struct
@@ -460,6 +476,9 @@ impl StructFieldList {
             StructField::EncPoint(id) => quote! {
                 #[serde_as(as = "(SerdePoint, SerdePoint)")]
                 pub #id: (Point, Point),
+            },
+            StructField::Pubkey(id) => quote! {
+                pub #id: CMZPubkey<Point>,
             },
         });
         quote! { #(#decls)* }
@@ -533,15 +552,46 @@ fn protocol_macro(
     // Are there any Hide or Joint attributes in _any_ credential to be
     // issued?
     let mut any_hide_joint = false;
+
     for iss_cred in proto_spec.issue_creds.iter() {
         // Are there any Hide or Joint attributes in this particular
         // credential to be issued?
         let mut cred_hide_joint = false;
-        let iss_cred_id = format_ident!("cred_{}", iss_cred.id);
+
+        let iss_cred_id = format_ident!("iss_cred_{}", iss_cred.id);
+        let pubkey_cred = format_ident!("pubkey_iss_cred_{}", iss_cred.id);
+        let b_cred = format_ident!("b_iss_cred_{}", iss_cred.id);
+        let P_cred = format_ident!("P_iss_cred_{}", iss_cred.id);
+        let Q_cred = format_ident!("Q_iss_cred_{}", iss_cred.id);
+        // EQ_cred is only used for CMZ, not muCMZ
+        let EQ_cred = format_ident!("EQ_iss_cred_{}", iss_cred.id);
+        let iss_cred_type = &iss_cred.cred_type;
+        let cred_str = iss_cred.id.to_string();
+
+        // Check that fill_creds filled in the private key for this
+        // credential
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            if #iss_cred_id.privkey.x.len() != #iss_cred_type::num_attrs() {
+                return Err(CMZError::PrivkeyMissing(#cred_str));
+            }
+        };
+
+        // Stash the public key in prepare and use it to fill in the
+        // public key of the completed credential in finalize
+        clientstate_fields.push_pubkey(&pubkey_cred.to_string());
+        prepare_code = quote! {
+            #prepare_code
+            let #pubkey_cred = #iss_cred_id.pubkey;
+        };
+        finalize_code = quote! {
+            #finalize_code
+            #iss_cred_id.pubkey = self.#pubkey_cred;
+        };
+
         for (attr, &spec) in iss_cred.attrs.iter() {
             // String versions of the credential name and the attribute
             // name
-            let cred_str = iss_cred.id.to_string();
             let attr_str = attr.to_string();
 
             // The scoped attribute name
@@ -592,7 +642,9 @@ fn protocol_macro(
                    exponential El Gamal encryption (of the attribute) E_attr =
                    (r_attr*B, attr*B + r_attr*D) for random r_attr.  Include E_attr
                    in the Request, attr in the ClientState, and attr,
-                   r_attr, and E_attr in the CliProof.
+                   r_attr, and E_attr in the CliProof.  Add
+                   b*x_attr*E_attr to E_Q in handle, for the b chosen on
+                   a per-issued-credential basis below.
                 */
                 let enc_attr = format_ident!("E_{}", scoped_attr);
                 let r_attr = format_ident!("r_{}", scoped_attr);
@@ -604,36 +656,18 @@ fn protocol_macro(
                         bp.mulB(&#scoped_attr) +
                         #r_attr * D);
                 };
+                let bx_attr = format_ident!("bx_{}", scoped_attr);
+                handle_code_post_auth = quote! {
+                    #handle_code_post_auth
+
+                    let #bx_attr = #b_cred * #iss_cred_id.privkey.x[#iss_cred_type::attr_num(#attr_str)];
+                    #EQ_cred.0 += #bx_attr * request.#enc_attr.0;
+                    #EQ_cred.1 += #bx_attr * request.#enc_attr.1;
+                }
             }
 
-            /* For all Hide and Joint attributes of a single credential to be
-               isued (for CMZ): the issuer chooses a random b, computes
-               P = b*B, E_Q = b*x_0*B + \sum_{hide,joint} b*x_attr*E_attr
-               + (0,\sum_{implicit,reveal,set,joint} b*x_attr*attr*B)
-               (note that E_Q and each E_attr are all pairs of Points; the
-               scalar multiplication is componentwise).  Include P, E_Q in
-               Reply. For each such attribute, include t_attr = b*x_attr and
-               T_attr = b*X_attr = t_attr*A in Reply and IssProof.  The client
-               will compute Q = E_Q[1] - d*E_Q[0].
-            */
-
-            /* For all Hide and Joint attributes of a single credential to be
-               issued (for µCMZ): The client chooses a random s, computes C =
-               (\sum_{hide,joint} attr*X_attr) + s*A, where X_attr is the
-               public key for that attribute.  Include s in the ClientState, C
-               in the Request, and the attributes, s, and C in the CliProof.
-               Hide attributes will be passed into prepare on the client side;
-               Joint attributes (client contribution) will be generated randomly
-               by prepare on the client side.  On the issuer side, handle will
-               pick a random b, compute P = b*A, R = b*(x_0*A + C) +
-               \sum_{implicit,reveal,set,joint} x_attr*attr*P.  Include P
-               and R in Reply, and x_0, b, P, R, C in IssProof.  For each
-               implicit,reveal,set,joint attribute, include x_attr and P_attr =
-               attr*P in IssProof.  The client will compute Q = R - s*P.
-            */
-
             /* For each Reveal attribute: include attr in Request (client will
-               pass the value into prepare)
+               pass the value into prepare).
             */
             if spec == IssueSpec::Reveal {
                 request_fields.push_scalar(&scoped_attr.to_string());
@@ -646,7 +680,7 @@ fn protocol_macro(
                 handle_code_pre_fill = quote! {
                     #handle_code_pre_fill
                     let #scoped_attr = request.#scoped_attr;
-                }
+                };
             }
 
             /* For each Implicit attribute: does not appear (will be filled in
@@ -685,7 +719,98 @@ fn protocol_macro(
                     #iss_cred_id.#attr = Some(#scoped_attr);
                 }
             }
+
+            /* For each Reveal, Implicit, Set, or Joint attribute, add
+               attr*x_attr*P to Q in handle.
+            */
+            if spec == IssueSpec::Reveal
+                || spec == IssueSpec::Implicit
+                || spec == IssueSpec::Set
+                || spec == IssueSpec::Joint
+            {
+                handle_code_post_auth = quote! {
+                    #handle_code_post_auth
+                    #Q_cred += (#scoped_attr *
+                        #iss_cred_id.privkey.x[#iss_cred_type::attr_num(#attr_str)])
+                        * #P_cred;
+                };
+            }
         }
+
+        if !use_muCMZ {
+            /* For all Hide and Joint attributes of a single credential to be
+               issued (for CMZ): the issuer chooses a random b, computes
+               P = b*B, E_Q = (0,b*x_0*B) + \sum_{hide,joint} b*x_attr*E_attr
+               + (0,\sum_{implicit,reveal,set,joint} b*x_attr*attr*B)
+               (note that E_Q and each E_attr are all pairs of Points; the
+               scalar multiplication is componentwise).  Include P, E_Q in
+               Reply. For each such attribute, include t_attr = b*x_attr and
+               T_attr = b*X_attr = t_attr*A in Reply and IssProof.  The client
+               will compute Q = E_Q[1] - d*E_Q[0].
+            */
+            reply_fields.push_point(&P_cred.to_string());
+            if cred_hide_joint {
+                reply_fields.push_encpoint(&EQ_cred.to_string());
+            } else {
+                reply_fields.push_point(&Q_cred.to_string());
+            }
+            let EQ_cred_code_pre = if cred_hide_joint {
+                quote! {
+                    let mut #EQ_cred = (Point::identity(), Point::identity());
+                }
+            } else {
+                quote! {}
+            };
+            let EQ_cred_code_post = if cred_hide_joint {
+                quote! {
+                    #EQ_cred.1 += #Q_cred;
+                }
+            } else {
+                quote! {}
+            };
+            handle_code_post_auth = quote! {
+                let #b_cred = <Scalar as ff::Field>::random(&mut *rng);
+                let #P_cred = bp.mulB(&#b_cred);
+                let mut #Q_cred = bp.mulB(&(#b_cred * #iss_cred_id.privkey.x0));
+                #EQ_cred_code_pre
+
+                #handle_code_post_auth
+
+                #EQ_cred_code_post
+            };
+            let finalize_Q_code = if cred_hide_joint {
+                quote! {
+                    #iss_cred_id.MAC.Q = reply.#EQ_cred.1 - self.d * reply.#EQ_cred.0;
+                }
+            } else {
+                quote! {
+                    #iss_cred_id.MAC.Q = reply.#Q_cred;
+                }
+            };
+            finalize_code = quote! {
+                #finalize_code
+                #iss_cred_id.MAC.P = reply.#P_cred;
+                #finalize_Q_code
+            };
+        }
+
+        if use_muCMZ {
+            /* For all Hide and Joint attributes of a single credential to be
+               issued (for µCMZ): The client chooses a random s, computes C =
+               (\sum_{hide,joint} attr*X_attr) + s*A, where X_attr is the
+               public key for that attribute.  Include s in the ClientState, C
+               in the Request, and the attributes, s, and C in the CliProof.
+               Hide attributes will be passed into prepare on the client side;
+               Joint attributes (client contribution) will be generated randomly
+               by prepare on the client side.  On the issuer side, handle will
+               pick a random b, compute P = b*A, R = b*(x_0*A + C) +
+               \sum_{implicit,reveal,set,joint} x_attr*attr*P.  Include P
+               and R in Reply, and x_0, b, P, R, C in IssProof.  For each
+               implicit,reveal,set,joint attribute, include x_attr and P_attr =
+               attr*P in IssProof.  The client will compute Q = R - s*P.
+            */
+        }
+
         any_hide_joint |= cred_hide_joint;
     }
 
@@ -809,13 +934,13 @@ fn protocol_macro(
     // immutable reference for each credential to be shown, and an owned
     // value for each credential to be issued.
     let client_show_args = proto_spec.show_creds.iter().map(|c| {
-        let id = format_ident!("cred_{}", c.id);
+        let id = format_ident!("show_cred_{}", c.id);
         let cred_type = &c.cred_type;
         quote! { #id: &#cred_type, }
     });
 
     let client_issue_args = proto_spec.issue_creds.iter().map(|c| {
-        let id = format_ident!("cred_{}", c.id);
+        let id = format_ident!("iss_cred_{}", c.id);
         let cred_type = &c.cred_type;
         quote! { #id: #cred_type, }
     });
@@ -848,12 +973,12 @@ fn protocol_macro(
             .show_creds
             .iter()
             .map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("show_cred_{}", c.id);
                 let cred_type = &c.cred_type;
                 quote! { let mut #id = #cred_type::default(); }
             })
             .chain(proto_spec.issue_creds.iter().map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("iss_cred_{}", c.id);
                 let cred_type = &c.cred_type;
                 quote! { let mut #id = #cred_type::default(); }
             }));
@@ -885,11 +1010,11 @@ fn protocol_macro(
             .show_creds
             .iter()
             .map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("show_cred_{}", c.id);
                 quote! { #id }
             })
             .chain(proto_spec.issue_creds.iter().map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("iss_cred_{}", c.id);
                 quote! { #id }
             }));
 
@@ -911,11 +1036,11 @@ fn protocol_macro(
             .show_creds
             .iter()
             .map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("show_cred_{}", c.id);
                 quote! { &mut #id, }
             })
             .chain(proto_spec.issue_creds.iter().map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("iss_cred_{}", c.id);
                 quote! { &mut #id, }
             }));
 
@@ -944,11 +1069,11 @@ fn protocol_macro(
             .show_creds
             .iter()
             .map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("show_cred_{}", c.id);
                 quote! { &#id, }
             })
             .chain(proto_spec.issue_creds.iter().map(|c| {
-                let id = format_ident!("cred_{}", c.id);
+                let id = format_ident!("iss_cred_{}", c.id);
                 quote! { &#id, }
             }));
 
@@ -971,6 +1096,7 @@ fn protocol_macro(
                 A: FnOnce(#(#authorize_args)*) ->
                     Result<(),CMZError>
             {
+                let bp = cmz_basepoints::<Point>();
                 #(#cred_decls)*
                 #handle_code_pre_fill
                 fill_creds(#(#fill_creds_params)*)?;
@@ -986,7 +1112,7 @@ fn protocol_macro(
     let clientstate_finalize_func = {
         // The credential declarations for the client's finalize function
         let cred_decls = proto_spec.issue_creds.iter().map(|c| {
-            let id = format_ident!("cred_{}", c.id);
+            let id = format_ident!("iss_cred_{}", c.id);
             let cred_type = &c.cred_type;
             quote! { let mut #id = #cred_type::default(); }
         });
@@ -1007,7 +1133,7 @@ fn protocol_macro(
 
         // Return value for ClientState's finalize function
         let cred_retvals = proto_spec.issue_creds.iter().map(|c| {
-            let id = format_ident!("cred_{}", c.id);
+            let id = format_ident!("iss_cred_{}", c.id);
             quote! { #id }
         });
 

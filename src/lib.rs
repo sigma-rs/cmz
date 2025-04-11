@@ -261,6 +261,9 @@ where
     /// The number of attributes in this credential
     fn num_attrs() -> usize;
 
+    /// The attribute number for a given name as a string
+    fn attr_num(name: &str) -> usize;
+
     /// Get a reference to one of the attributes, specified by name as a
     /// string.
     fn attr(&self, name: &str) -> &Option<Self::Scalar>;
@@ -392,6 +395,8 @@ pub enum CMZError {
     ImplicitAttrIssMissing(&'static str, &'static str),
     #[error("Set attribute {1} of credential {0} was not set by fill_creds")]
     SetAttrMissing(&'static str, &'static str),
+    #[error("private key for credential {0} was not set by fill_creds")]
+    PrivkeyMissing(&'static str),
     #[error("unknown CMZ proof error")]
     Unknown,
 }
