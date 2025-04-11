@@ -1186,6 +1186,7 @@ fn protocol_macro(
 
     // Output the generated module for this protocol
     quote! {
+        #[allow(non_snake_case)]
         pub mod #proto_name {
             use super::*;
 
