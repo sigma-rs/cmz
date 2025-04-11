@@ -141,6 +141,23 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
 
                 (privkey, pubkey)
             }
+
+            fn verify_MAC(&self, privkey: &CMZPrivkey<Self::Point>) ->
+                    Result<(),()> {
+                if privkey.x.len() != Self::num_attrs() {
+                    return Err(());
+                }
+                let mut coeff = privkey.x0;
+                for field in Self::attrs().iter() {
+                    let attr_val = self.attr(field).ok_or(())?;
+                    coeff += attr_val * privkey.x[Self::attr_num(field)];
+                }
+                if coeff * self.MAC.P == self.MAC.Q {
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            }
         }
     };
     gen.into()

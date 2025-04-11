@@ -321,6 +321,12 @@ where
         slf.set_pubkey(pubkey);
         slf
     }
+
+    /// Verify the MAC in this credential, given the private key.  This
+    /// is mainly useful for debugging, since the client will not have
+    /// the private key and the issuer will typically not have the
+    /// complete credential.
+    fn verify_MAC(&self, privkey: &CMZPrivkey<Self::Point>) -> Result<(), ()>;
 }
 
 /** The CMZ macro for declaring CMZ credentials.

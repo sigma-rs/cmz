@@ -108,9 +108,18 @@ fn test_wallet() -> Result<(), CMZError> {
     let ebook_item = issue_item(&mut rng, 100, 2995, &item_priv, &item_pub)?;
     let album_item = issue_item(&mut rng, 200, 995, &item_priv, &item_pub)?;
 
+    // The verify_MAC function is only usable for debugging, since the
+    // client will not have the private key and the issuer will
+    // typically not have the complete credential.  But we'll use it
+    // here to check that the credentials we get back are correct.
+    ebook_item.verify_MAC(&item_priv).unwrap();
+    album_item.verify_MAC(&item_priv).unwrap();
+
     // In exchange for out of band funds, the issuer generates a loaded
     // wallet and sends it to the client.
     let initial_wallet = issue_wallet(&mut rng, 10000, &wallet_priv, &wallet_pub)?;
+
+    initial_wallet.verify_MAC(&wallet_priv).unwrap();
 
     // Buy an item (no fee version)
 
@@ -141,6 +150,8 @@ fn test_wallet() -> Result<(), CMZError> {
     let recvreply = wallet_spend::Reply::try_from(&replybytes[..]).unwrap();
     let W_issued = state.finalize(recvreply).unwrap();
 
+    W_issued.verify_MAC(&wallet_priv).unwrap();
+
     // The version of the protocol parameterized by a fee.  The client
     // and issue must agree on the params.
     let params = wallet_spend_with_fee::Params { fee: 5u128.into() };
@@ -152,7 +163,7 @@ fn test_wallet() -> Result<(), CMZError> {
 
     let (request_fee, state_fee) =
         wallet_spend_with_fee::prepare(&mut rng, &W_issued, &album_item, N_fee, &params)?;
-    let reqbytes_fee = request.as_bytes();
+    let reqbytes_fee = request_fee.as_bytes();
 
     // issuer actions
     let recvreq_fee = wallet_spend_with_fee::Request::try_from(&reqbytes_fee[..]).unwrap();
@@ -174,6 +185,8 @@ fn test_wallet() -> Result<(), CMZError> {
     // client actions
     let recvreply_fee = wallet_spend_with_fee::Reply::try_from(&replybytes_fee[..]).unwrap();
     let W_issued_fee = state_fee.finalize(recvreply_fee).unwrap();
+
+    W_issued_fee.verify_MAC(&wallet_priv).unwrap();
 
     Ok(())
 }
