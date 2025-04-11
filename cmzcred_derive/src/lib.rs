@@ -551,44 +551,52 @@ fn protocol_macro(
                 cred_hide_joint = true;
             }
 
+            if spec == IssueSpec::Hide {
+                /* For each Hide attribute, the attribute (passed in the
+                   prepare) goes in the ClientState.
+                */
+                clientstate_fields.push_scalar(&scoped_attr.to_string());
+                prepare_code = quote! {
+                    #prepare_code
+                    let #scoped_attr =
+                    #iss_cred_id.#attr.ok_or(CMZError::HideAttrMissing(#cred_str,
+                    #attr_str))?;
+                };
+            }
+
+            if spec == IssueSpec::Joint {
+                /* For each Joint attribute, the client's part of the
+                   attribute (randomly generated) goes in the
+                   ClientState, and the issuer's part of the attribute
+                   (randomly generated) goes in the Reply.
+                */
+                clientstate_fields.push_scalar(&scoped_attr.to_string());
+                reply_fields.push_scalar(&scoped_attr.to_string());
+                prepare_code = quote! {
+                    #prepare_code
+                    let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
+                };
+                handle_code_pre_fill = quote! {
+                    #handle_code_pre_fill
+                    let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
+                };
+                finalize_code = quote! {
+                    #finalize_code
+                    let #scoped_attr = self.#scoped_attr + reply.#scoped_attr;
+                    #iss_cred_id.#attr = Some(#scoped_attr);
+                };
+            }
+
             if !use_muCMZ && (spec == IssueSpec::Hide || spec == IssueSpec::Joint) {
                 /* For each Hide and Joint attribute (for CMZ): Compute an
                    exponential El Gamal encryption (of the attribute) E_attr =
                    (r_attr*B, attr*B + r_attr*D) for random r_attr.  Include E_attr
                    in the Request, attr in the ClientState, and attr,
-                   r_attr, and E_attr in the CliProof.  Hide attributes
-                   will be passed into prepare on the client side; Joint
-                   attributes (client contribution) will be generated
-                   randomly by prepare on the client side, and (issuer
-                   contribution) by handle on the issuer side.
+                   r_attr, and E_attr in the CliProof.
                 */
                 let enc_attr = format_ident!("E_{}", scoped_attr);
                 let r_attr = format_ident!("r_{}", scoped_attr);
                 request_fields.push_encpoint(&enc_attr.to_string());
-                clientstate_fields.push_scalar(&scoped_attr.to_string());
-                if spec == IssueSpec::Hide {
-                    prepare_code = quote! {
-                        #prepare_code
-                        let #scoped_attr =
-                        #iss_cred_id.#attr.ok_or(CMZError::HideAttrMissing(#cred_str,
-                        #attr_str))?;
-                    };
-                } else {
-                    prepare_code = quote! {
-                        #prepare_code
-                        let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
-                    };
-                    reply_fields.push_scalar(&scoped_attr.to_string());
-                    handle_code_pre_fill = quote! {
-                        #handle_code_pre_fill
-                        let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
-                    };
-                    finalize_code = quote! {
-                        #finalize_code
-                        let #scoped_attr = self.#scoped_attr + reply.#scoped_attr;
-                        #iss_cred_id.#attr = Some(#scoped_attr);
-                    };
-                }
                 prepare_code = quote! {
                     #prepare_code
                     let #r_attr = <Scalar as ff::Field>::random(&mut *rng);
