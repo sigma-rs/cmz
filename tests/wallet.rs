@@ -132,6 +132,8 @@ fn test_wallet() -> Result<(), CMZError> {
             N.set_privkey(&wallet_priv);
             Ok(())
         },
+        // This callback should test that W.randid has never been seen
+        // before, but it doesn't currently do that.
         |W: &Wallet, I: &Item, N: &Wallet| Ok(()),
     )?;
     let replybytes = reply.as_bytes();
@@ -164,6 +166,8 @@ fn test_wallet() -> Result<(), CMZError> {
             N.set_privkey(&wallet_priv);
             Ok(wallet_spend_with_fee::Params { fee: params.fee })
         },
+        // This callback should test that W.randid has never been seen
+        // before, but it doesn't currently do that.
         |W: &Wallet, I: &Item, N: &Wallet| Ok(()),
     )?;
     let replybytes_fee = reply_fee.as_bytes();
