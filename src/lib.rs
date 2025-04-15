@@ -99,8 +99,8 @@ pub struct CMZPubkey<G: PrimeGroup> {
 // result in faster multiplications.
 const WNAF_SIZE: usize = 6;
 
-// A struct (generic over G) holding the two CMZ bases, and their Wnaf
-// basepoint tables
+/// A struct (generic over G) holding the two CMZ bases, and their Wnaf
+/// basepoint tables
 #[derive(Clone)]
 pub struct CMZBasepoints<G: Group> {
     A: G,
@@ -145,7 +145,7 @@ impl<G: Group> CMZBasepoints<G> {
 }
 
 // What's going on here needs some explanation.  For each group G, we
-// want to pre-compute the WnafBase tables in a CMZBasepoints<G> struct,
+// want to pre-compute the WnafBase tables in a [`CMZBasepoints`] struct,
 // and we want that pre-computed struct to remain globally accessible.
 // So ideally, we'd just have a generic static CMZBasepoints<G> struct,
 // and instantiate it once for each G that we use.
@@ -220,8 +220,10 @@ fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> 
 /// that no one know the discrete log between A and B.  So you can't
 /// generate A by multiplying B by some scalar, for example.  If your
 /// group has a hash_from_bytes function, then pass
-/// hash_from_bytes::<Sha512>(b"CMZ Generator A").  Otherwise, you're
-/// possibly on your own to generate an appropriate generator A.
+///
+///     hash_from_bytes::<Sha512>(b"CMZ Generator A")
+///
+/// Otherwise, you're possibly on your own to generate an appropriate generator A.
 /// Everyone who uses a given credential type with a given group will
 /// need to use the same A.  You need to call this before doing any
 /// operations with a credential.
@@ -329,32 +331,30 @@ where
     fn verify_MAC(&self, privkey: &CMZPrivkey<Self::Point>) -> Result<(), ()>;
 }
 
-/** The CMZ macro for declaring CMZ credentials.
-
-Use this macro to declare a CMZ credential struct type.
-
-`CMZ!{ Name<Group>: attr1, attr2, attr3 }`
-
-will declare a struct type called `Name`, containing one field for each
-of the listed attributes.  The attribute fields will be of type
-`Option<Scalar>`.  It will also automatically add a field called `MAC`
-of type `CMZMac`, and an implementation (via the `CMZCred` derive) of
-the `CMZCredential` trait.  The mathematical group used (the field for
-the values of the attributes and the private key elements, and the group
-elements for the commitments, MAC components, and public key elements)
-is Group.  If "<Group>" is omitted, the macro will default to using a
-group called "G", which you can define, for example, as:
-
-use curve25519_dalek::ristretto::RistrettoPoint as G;
-
-or:
-
-use curve25519_dalek::ristretto::RistrettoPoint;
-type G = RistrettoPoint;
-
-The group must implement the trait group::prime::PrimeGroup.
-
-*/
+/// The CMZ macro for declaring CMZ credentials.
+///
+/// Use this macro to declare a CMZ credential struct type.
+///
+///     CMZ!{ Name<Group>: attr1, attr2, attr3 }
+///
+/// will declare a struct type called `Name`, containing one field for each
+/// of the listed attributes.  The attribute fields will be of type
+/// `Option<Scalar>`.  It will also automatically add a field called `MAC`
+/// of type [`CMZMac`], and an implementation (via the `CMZCred` derive) of
+/// the [`CMZCredential`] trait.  The mathematical group used (the field for
+/// the values of the attributes and the private key elements, and the group
+/// elements for the commitments, MAC components, and public key elements)
+/// is [`Group`].  If [`Group`] is omitted, the macro will default to using a
+/// group called "G", which you can define, for example, as:
+///
+///     use curve25519_dalek::ristretto::RistrettoPoint as G;
+///
+/// or:
+///
+///     use curve25519_dalek::ristretto::RistrettoPoint;
+///     type G = RistrettoPoint;
+///
+/// The group must implement the trait [`PrimeGroup`](https://docs.rs/group/latest/group/prime/trait.PrimeGroup.html).
 #[macro_export]
 macro_rules! CMZ {
     ( $name: ident < $G: ident > : $( $id: ident ),+ ) => {

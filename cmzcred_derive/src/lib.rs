@@ -1217,7 +1217,7 @@ fn protocol_macro(
     .into()
 }
 
-/** There are six variants of the CMZProtocol macro.  The ones starting
+/** There are six variants of the `CMZProtocol` macro.  The ones starting
   with "CMZ" create protocol implementations using the original CMZ
   issuing protocol.  The ones starting with "muCMZ" using the more
   efficient µCMZ protocol.  The ones with "Cli" only create the code

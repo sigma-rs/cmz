@@ -1,8 +1,7 @@
 //! serde adaptors for Group + GroupEncoding and for PrimeField
 //!
-//! Adapted from elliptic_curve_tools v0.1.2 by Michael Lodder:
-//! https://crates.io/crates/elliptic-curve-tools
-//!
+//! Adapted from [elliptic_curve_tools](https://crates.io/crates/elliptic-curve-tool)
+//! v0.1.2 by Michael Lodder.
 //! Lodder's original can be adapted under the terms of the MIT license:
 //!
 //! [No explicit copyright line was present in that package's
