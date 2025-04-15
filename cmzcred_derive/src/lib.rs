@@ -931,10 +931,17 @@ fn protocol_macro(
         // Start constructing the issuer's version of the verification
         // point Vi (which will be updated with each Hide attribute below)
         // and the MAC on the Reveal and Implicit attributes
+
+        // µCMZ has the extra xr to add in here
+        let q_init = if use_muCMZ {
+            quote! { #show_cred_id.privkey.x0 + #show_cred_id.privkey.xr }
+        } else {
+            quote! { #show_cred_id.privkey.x0 }
+        };
         handle_code_post_fill = quote! {
             #handle_code_post_fill
             let mut #Vi_cred = -request.#CQ_cred;
-            let mut #q_cred = #show_cred_id.privkey.x0;
+            let mut #q_cred = #q_init;
         };
 
         for (attr, &spec) in show_cred.attrs.iter() {
