@@ -1,5 +1,6 @@
 use cmz::*;
 use curve25519_dalek::ristretto::RistrettoPoint;
+use curve25519_dalek::scalar::Scalar;
 use group::Group;
 use rand_core::RngCore;
 use sha2::Sha512;
@@ -34,13 +35,16 @@ fn test_basic() {
     assert!(privkey == privkey_serde);
     assert!(pubkey == pubkey_serde);
 
-    let basic_cred = Basic::using_privkey(&privkey_serde);
+    let mut basic_cred = Basic::using_privkey(&privkey_serde);
 
     let basic_cred_bytes = bincode::serialize(&basic_cred).unwrap();
 
     println!("{:#?}", basic_cred);
 
     println!("{:#?}", basic_cred_bytes);
+
+    basic_cred.attr1 = Some(Scalar::ZERO);
+    basic_cred.attr2 = Some(Scalar::ONE);
 
     let (req, state) = basic_proto::prepare(&mut rng, &basic_cred).unwrap();
     println!("{req:#?}");
