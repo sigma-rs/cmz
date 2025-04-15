@@ -109,8 +109,7 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                 self.pubkey.clone()
             }
 
-            fn set_privkey(&mut self, privkey: &CMZPrivkey<Self::Point>)
-            -> &mut Self {
+            fn set_privkey(&mut self, privkey: &CMZPrivkey<Self::Point>) -> &mut Self {
                 self.pubkey = cmz_privkey_to_pubkey(&privkey);
                 self.privkey = privkey.clone();
                 self
@@ -124,17 +123,12 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                     (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>) {
                 // Generate (num_attrs + 2) random scalars as the
                 // private key
-                let x0tilde: Self::Scalar = if muCMZ {
-                    <Self::Scalar as ff::Field>::ZERO
-                } else {
-                    <Self::Scalar as ff::Field>::random(&mut *rng)
-                };
-                let x0: Self::Scalar =
-                    <Self::Scalar as ff::Field>::random(&mut *rng);
+                let x0 = <Self::Scalar as ff::Field>::random(&mut *rng);
+                let xr = <Self::Scalar as ff::Field>::random(&mut *rng);
                 let x: Vec<Self::Scalar> = (0..Self::num_attrs())
                     .map(|_| <Self::Scalar as ff::Field>::random(&mut *rng))
                     .collect();
-                let privkey = CMZPrivkey { x0tilde, x0, x };
+                let privkey = CMZPrivkey { muCMZ, x0, xr, x };
 
                 // Convert the private key to a public key
                 let pubkey = cmz_privkey_to_pubkey(&privkey);

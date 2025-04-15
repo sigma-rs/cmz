@@ -75,10 +75,14 @@ pub struct CMZMac<G: PrimeGroup> {
 #[serde_as]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CMZPrivkey<G: PrimeGroup> {
-    #[serde_as(as = "SerdeScalar")]
-    pub x0tilde: <G as Group>::Scalar,
+    // Is this key for µCMZ or classic CMZ14?
+    pub muCMZ: bool,
     #[serde_as(as = "SerdeScalar")]
     pub x0: <G as Group>::Scalar,
+    // The next field is xr for µCMZ, and serves the role of x0tilde for
+    // CMZ14
+    #[serde_as(as = "SerdeScalar")]
+    pub xr: <G as Group>::Scalar,
     // The elements of x correspond to the attributes of the credential
     #[serde_as(as = "Vec<SerdeScalar>")]
     pub x: Vec<<G as Group>::Scalar>,
@@ -90,6 +94,9 @@ pub struct CMZPrivkey<G: PrimeGroup> {
 pub struct CMZPubkey<G: PrimeGroup> {
     #[serde_as(as = "Option<SerdePoint>")]
     pub X0: Option<G>,
+    // Xr is only used for µCMZ, not CMZ14 (where it will be None)
+    #[serde_as(as = "Option<SerdePoint>")]
+    pub Xr: Option<G>,
     // The elements of X correspond to the attributes of the credential
     #[serde_as(as = "Vec<SerdePoint>")]
     pub X: Vec<G>,
@@ -245,9 +252,18 @@ pub fn cmz_basepoints<G: PrimeGroup>() -> &'static CMZBasepoints<G> {
 /// Compute a public key from a private key
 pub fn cmz_privkey_to_pubkey<G: PrimeGroup>(privkey: &CMZPrivkey<G>) -> CMZPubkey<G> {
     let bp = load_bp::<G>(None);
-    let X0: Option<G> = Some(bp.mulA(&privkey.x0tilde) + bp.mulB(&privkey.x0));
+    let X0: Option<G> = if privkey.muCMZ {
+        Some(bp.mulB(&privkey.x0))
+    } else {
+        Some(bp.mulA(&privkey.xr) + bp.mulB(&privkey.x0))
+    };
+    let Xr: Option<G> = if privkey.muCMZ {
+        Some(bp.mulA(&privkey.xr))
+    } else {
+        None
+    };
     let X: Vec<G> = privkey.x.iter().map(|x| bp.mulA(x)).collect();
-    CMZPubkey { X0, X }
+    CMZPubkey { X0, Xr, X }
 }
 
 /// The CMZCredential trait implemented by all CMZ credential struct types.
