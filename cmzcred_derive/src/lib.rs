@@ -575,14 +575,22 @@ fn protocol_macro(
         // credential to be issued?
         let mut cred_hide_joint = false;
 
+        // The credential being issued
         let iss_cred_id = format_ident!("iss_cred_{}", iss_cred.id);
+        // The public key for the credential
         let pubkey_cred = format_ident!("pubkey_iss_cred_{}", iss_cred.id);
+        // The randomizing factor to generate P
         let b_cred = format_ident!("b_iss_cred_{}", iss_cred.id);
+        // The (revealed part of) the MAC
         let P_cred = format_ident!("P_iss_cred_{}", iss_cred.id);
         let Q_cred = format_ident!("Q_iss_cred_{}", iss_cred.id);
+        // The encrypted form of the hidden part of the MAC
         // EQ_cred is only used for CMZ, not muCMZ
         let EQ_cred = format_ident!("EQ_iss_cred_{}", iss_cred.id);
+
         let iss_cred_type = &iss_cred.cred_type;
+
+        // String version of the credential name
         let cred_str = iss_cred.id.to_string();
 
         // Check that fill_creds filled in the private key for this
@@ -591,6 +599,15 @@ fn protocol_macro(
             #handle_code_post_fill
             if #iss_cred_id.privkey.x.len() != #iss_cred_type::num_attrs() {
                 return Err(CMZError::PrivkeyMissing(#cred_str));
+            }
+        };
+
+        // Check that the credential passed to prepare has its public
+        // key set
+        prepare_code = quote! {
+            #prepare_code
+            if #iss_cred_id.pubkey.X.len() != #iss_cred_type::num_attrs() {
+                return Err(CMZError::PubkeyMissing(#cred_str));
             }
         };
 
@@ -607,8 +624,7 @@ fn protocol_macro(
         };
 
         for (attr, &spec) in iss_cred.attrs.iter() {
-            // String versions of the credential name and the attribute
-            // name
+            // String version of the attribute name
             let attr_str = attr.to_string();
 
             // The scoped attribute name
@@ -704,6 +720,7 @@ fn protocol_macro(
                 handle_code_pre_fill = quote! {
                     #handle_code_pre_fill
                     let #scoped_attr = request.#scoped_attr;
+                    #iss_cred_id.#attr = Some(#scoped_attr);
                 };
                 finalize_code = quote! {
                     #finalize_code
@@ -857,6 +874,169 @@ fn protocol_macro(
             let (d,D) = bp.keypairB(&mut *rng);
             #prepare_code
         }
+    }
+
+    for show_cred in proto_spec.show_creds.iter() {
+        // The credential being shown
+        let show_cred_id = format_ident!("show_cred_{}", show_cred.id);
+        // The rerandomizing factor for the MAC
+        let t_cred = format_ident!("t_show_cred_{}", show_cred.id);
+        // The rerandomized MAC
+        let P_cred = format_ident!("P_show_cred_{}", show_cred.id);
+        let Q_cred = format_ident!("Q_show_cred_{}", show_cred.id);
+        // The randomness for the Pedersen commitment to Q
+        let zQ_cred = format_ident!("zQ_show_cred_{}", show_cred.id);
+        // The Pedersen commitment to Q
+        let CQ_cred = format_ident!("CQ_show_cred_{}", show_cred.id);
+        // The verification point (client version)
+        let Vc_cred = format_ident!("Vc_show_cred_{}", show_cred.id);
+        // The verification point (issuer version)
+        let Vi_cred = format_ident!("Vi_show_cred_{}", show_cred.id);
+        // The coefficient (on P) of the MAC on the Reveal and Implicit
+        // attributes, computed by the issuer
+        let q_cred = format_ident!("q_show_cred_{}", show_cred.id);
+
+        let show_cred_type = &show_cred.cred_type;
+
+        // String version of the credential name
+        let cred_str = show_cred.id.to_string();
+
+        // Check that fill_creds filled in the private key for this
+        // credential
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            if #show_cred_id.privkey.x.len() != #show_cred_type::num_attrs() {
+                return Err(CMZError::PrivkeyMissing(#cred_str));
+            }
+        };
+
+        // Check that the credential passed to prepare has its public
+        // key set
+        prepare_code = quote! {
+            #prepare_code
+            if #show_cred_id.pubkey.X.len() != #show_cred_type::num_attrs() {
+                return Err(CMZError::PubkeyMissing(#cred_str));
+            }
+        };
+
+        // Rerandomize the MAC and construct a Pedersen commitment to Q
+        // Also start constructing the client's version of the
+        // verification point Vc (which will be updated with each Hide
+        // attribute below)
+        prepare_code = quote! {
+            #prepare_code
+            let #t_cred = <Scalar as ff::Field>::random(&mut *rng);
+            let #P_cred = #t_cred * #show_cred_id.MAC.P;
+            let #Q_cred = #t_cred * #show_cred_id.MAC.Q;
+            let #zQ_cred = <Scalar as ff::Field>::random(&mut *rng);
+            let #CQ_cred = #Q_cred - bp.mulB(&#zQ_cred);
+            let mut #Vc_cred = bp.mulB(&#zQ_cred);
+        };
+        request_fields.push_point(&P_cred.to_string());
+        request_fields.push_point(&CQ_cred.to_string());
+        // Start constructing the issuer's version of the verification
+        // point Vi (which will be updated with each Hide attribute below)
+        // and the MAC on the Reveal and Implicit attributes
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            let mut #Vi_cred = -request.#CQ_cred;
+            let mut #q_cred = #show_cred_id.privkey.x0;
+        };
+
+        for (attr, &spec) in show_cred.attrs.iter() {
+            // String version of the attribute name
+            let attr_str = attr.to_string();
+
+            // The scoped attribute name
+            let scoped_attr = format_ident!("show_{}attr_{}_{}", spec.abbr(), show_cred.id, attr);
+
+            if spec == ShowSpec::Hide {
+                prepare_code = quote! {
+                    #prepare_code
+                    let #scoped_attr =
+                    #show_cred_id.#attr.ok_or(CMZError::HideAttrMissing(#cred_str,
+                    #attr_str))?;
+                };
+                // Construct a Pedersen commitment to the Hide attribute
+                // and update the verification point
+                let z_attr = format_ident!("z_{}", scoped_attr);
+                let C_attr = format_ident!("C_{}", scoped_attr);
+                request_fields.push_point(&C_attr.to_string());
+                prepare_code = quote! {
+                    #prepare_code
+                    let #z_attr = <Scalar as ff::Field>::random(&mut *rng);
+                    let #C_attr = #scoped_attr * #P_cred + bp.mulA(&#z_attr);
+                    #Vc_cred += #z_attr *
+                        #show_cred_id.pubkey.X[#show_cred_type::attr_num(#attr_str)];
+                };
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
+                    #Vi_cred += #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)]
+                        * request.#C_attr;
+                };
+            }
+
+            if spec == ShowSpec::Reveal {
+                request_fields.push_scalar(&scoped_attr.to_string());
+                prepare_code = quote! {
+                    #prepare_code
+                    let #scoped_attr =
+                    #show_cred_id.#attr.ok_or(CMZError::RevealAttrMissing(#cred_str,
+                    #attr_str))?;
+                };
+                handle_code_pre_fill = quote! {
+                    #handle_code_pre_fill
+                    let #scoped_attr = request.#scoped_attr;
+                    #show_cred_id.#attr = Some(#scoped_attr);
+                };
+                // Accumulate the coefficient (of P) on the component of
+                // Q due to this attribute
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
+                    #q_cred += #scoped_attr *
+                        #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)];
+                };
+            }
+
+            if spec == ShowSpec::Implicit {
+                prepare_code = quote! {
+                    #prepare_code
+                    let #scoped_attr =
+                    #show_cred_id.#attr.ok_or(CMZError::ImplicitAttrCliMissing(#cred_str,
+                    #attr_str))?;
+                };
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
+                    let #scoped_attr =
+                    #show_cred_id.#attr.ok_or(CMZError::ImplicitAttrIssMissing(#cred_str,
+                    #attr_str))?;
+                };
+                // Accumulate the coefficient (of P) on the component of
+                // Q due to this attribute
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
+                    #q_cred += #scoped_attr *
+                        #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)];
+                };
+            }
+        }
+        // Compute the computation of the issuer's version of the
+        // Verification point Vi
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            #Vi_cred += #q_cred * request.#P_cred;
+        };
+        /*
+        // Check that Vi == Vc
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            println!("Vi = {:#?}", #Vi_cred.to_bytes());
+        };
+        prepare_code = quote! {
+            #prepare_code
+            println!("Vc = {:#?}", #Vc_cred.to_bytes());
+        };
+        */
     }
 
     // Build the Params struct, if we have params
@@ -1206,6 +1386,7 @@ fn protocol_macro(
         #[allow(non_snake_case)]
         pub mod #proto_name {
             use super::*;
+            use group::GroupEncoding;
 
             #group_types
             #params_struct

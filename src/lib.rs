@@ -413,6 +413,8 @@ pub enum CMZError {
     SetAttrMissing(&'static str, &'static str),
     #[error("private key for credential {0} was not set by fill_creds")]
     PrivkeyMissing(&'static str),
+    #[error("public key for credential {0} was not passed to prepare")]
+    PubkeyMissing(&'static str),
     #[error("unknown CMZ proof error")]
     Unknown,
 }
