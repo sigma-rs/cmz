@@ -588,20 +588,27 @@ fn protocol_macro(
         let cred_str = iss_cred.id.to_string();
 
         // Check that fill_creds filled in the private key for this
-        // credential
+        // credential and that it's for the right protocol (CMZ14 or
+        // µCMZ)
         handle_code_post_fill = quote! {
             #handle_code_post_fill
             if #iss_cred_id.privkey.x.len() != #iss_cred_type::num_attrs() {
                 return Err(CMZError::PrivkeyMissing(#cred_str));
             }
+            if #iss_cred_id.privkey.muCMZ != #use_muCMZ {
+                return Err(CMZError::WrongProtocol(#cred_str));
+            }
         };
 
         // Check that the credential passed to prepare has its public
-        // key set
+        // key set and that it's for the right protocol (CMZ14 or µCMZ)
         prepare_code = quote! {
             #prepare_code
             if #iss_cred_id.pubkey.X.len() != #iss_cred_type::num_attrs() {
                 return Err(CMZError::PubkeyMissing(#cred_str));
+            }
+            if #iss_cred_id.pubkey.Xr.is_some() != #use_muCMZ {
+                return Err(CMZError::WrongProtocol(#cred_str));
             }
         };
 
@@ -896,20 +903,27 @@ fn protocol_macro(
         let cred_str = show_cred.id.to_string();
 
         // Check that fill_creds filled in the private key for this
-        // credential
+        // credential and that it's for the right protocol (CMZ14 or
+        // µCMZ)
         handle_code_post_fill = quote! {
             #handle_code_post_fill
             if #show_cred_id.privkey.x.len() != #show_cred_type::num_attrs() {
                 return Err(CMZError::PrivkeyMissing(#cred_str));
             }
+            if #show_cred_id.privkey.muCMZ != #use_muCMZ {
+                return Err(CMZError::WrongProtocol(#cred_str));
+            }
         };
 
         // Check that the credential passed to prepare has its public
-        // key set
+        // key set and that it's for the right protocol (CMZ14 or µCMZ)
         prepare_code = quote! {
             #prepare_code
             if #show_cred_id.pubkey.X.len() != #show_cred_type::num_attrs() {
                 return Err(CMZError::PubkeyMissing(#cred_str));
+            }
+            if #show_cred_id.pubkey.Xr.is_some() != #use_muCMZ {
+                return Err(CMZError::WrongProtocol(#cred_str));
             }
         };
 

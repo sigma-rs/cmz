@@ -430,6 +430,8 @@ pub enum CMZError {
     PrivkeyMissing(&'static str),
     #[error("public key for credential {0} was not passed to prepare")]
     PubkeyMissing(&'static str),
+    #[error("credential initialized with wrong protocol")]
+    WrongProtocol(&'static str),
     #[error("unknown CMZ proof error")]
     Unknown,
 }
