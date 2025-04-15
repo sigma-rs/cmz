@@ -229,7 +229,6 @@ fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> 
 /// group has a hash_from_bytes function, then you can use that to generate
 /// A. For example, if your group is a curve25519 group, you can
 ///
-///    use curve25519_dalek::ristretto::RistrettoPoint as G;
 ///    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT as B;
 ///    use sha2::Sha512;
 ///    let A = G::hash_from_bytes::<Sha512>(b"CMZ Generator A")
@@ -314,7 +313,7 @@ where
 
     /// Generate random private and public keys for this credential
     /// type.  muCMZ should be true if this credential will be issued
-    /// with muCMZ protocols (and _not_ classic CMZ protocols).
+    /// with muCMZ protocols (and _not_ classic CMZ14 protocols).
     fn gen_keys(
         rng: &mut impl RngCore,
         muCMZ: bool,
@@ -360,8 +359,8 @@ where
 ///     use cmz::{cmz_privkey_to_pubkey, serde_as, SerdeScalar, Serialize, Deserialize};
 ///     use group::Group;
 ///     use rand_core::RngCore;
-///     use curve25519_dalek::ristretto::RistrettoPoint as G;
-///     CMZ!{ Name<G>: attr1, attr2, attr3 }
+///     use curve25519_dalek::ristretto::RistrettoPoint as Grp;
+///     CMZ!{ Name<Grp>: attr1, attr2, attr3 }
 ///
 /// will declare a struct type called `Name`, containing one field for each
 /// of the listed attributes.  The attribute fields will be of type
@@ -370,7 +369,7 @@ where
 /// the [`CMZCredential`] trait.  The mathematical group used (the field for
 /// the values of the attributes and the private key elements, and the group
 /// elements for the commitments, MAC components, and public key elements)
-/// is [`Group`].  If [`Group`] is omitted, the macro will default to using a
+/// is [`Grp`].  If [`Grp`] is omitted, the macro will default to using a
 /// group called "G", which you can define, for example, as:
 ///
 ///     use curve25519_dalek::ristretto::RistrettoPoint as G;
