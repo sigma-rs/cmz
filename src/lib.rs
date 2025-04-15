@@ -219,9 +219,14 @@ fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> 
 /// other non-identity point in a prime-order group), but it is required
 /// that no one know the discrete log between A and B.  So you can't
 /// generate A by multiplying B by some scalar, for example.  If your
-/// group has a hash_from_bytes function, then pass
+/// group has a hash_from_bytes function, then you can use that to generate
+/// A. For example, if your group is a curve25519 group, you can
 ///
-///     hash_from_bytes::<Sha512>(b"CMZ Generator A")
+///    use curve25519_dalek::ristretto::RistrettoPoint as G;
+///    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT as B;
+///    use sha2::Sha512;
+///    let A = G::hash_from_bytes::<Sha512>(b"CMZ Generator A")
+///    assert_ne!(A, B);
 ///
 /// Otherwise, you're possibly on your own to generate an appropriate generator A.
 /// Everyone who uses a given credential type with a given group will
@@ -335,7 +340,12 @@ where
 ///
 /// Use this macro to declare a CMZ credential struct type.
 ///
-///     CMZ!{ Name<Group>: attr1, attr2, attr3 }
+///     use cmz::{CMZ, CMZCred, CMZCredential, CMZPrivkey, CMZPubkey, CMZMac};
+///     use cmz::{cmz_privkey_to_pubkey, serde_as, SerdeScalar, Serialize, Deserialize};
+///     use group::Group;
+///     use rand_core::RngCore;
+///     use curve25519_dalek::ristretto::RistrettoPoint as G;
+///     CMZ!{ Name<G>: attr1, attr2, attr3 }
 ///
 /// will declare a struct type called `Name`, containing one field for each
 /// of the listed attributes.  The attribute fields will be of type
