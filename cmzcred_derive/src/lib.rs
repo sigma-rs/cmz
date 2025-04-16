@@ -142,6 +142,9 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                     return Err(());
                 }
                 let mut coeff = privkey.x0;
+                if privkey.muCMZ {
+                    coeff += privkey.xr;
+                }
                 for field in Self::attrs().iter() {
                     let attr_val = self.attr(field).ok_or(())?;
                     coeff += attr_val * privkey.x[Self::attr_num(field)];
@@ -578,9 +581,19 @@ fn protocol_macro(
         // The (revealed part of) the MAC
         let P_cred = format_ident!("P_iss_cred_{}", iss_cred.id);
         let Q_cred = format_ident!("Q_iss_cred_{}", iss_cred.id);
+
+        // Only for CMZ14, not µCMZ:
+
         // The encrypted form of the hidden part of the MAC
-        // EQ_cred is only used for CMZ, not muCMZ
         let EQ_cred = format_ident!("EQ_iss_cred_{}", iss_cred.id);
+
+        // Only for µCMZ, not CMZ14:
+
+        // The Pedersen commitment to only the Hide and Joint attributes
+        let C_cred = format_ident!("C_iss_cred_{}", iss_cred.id);
+        // The completed Pedersen commitment to the attributes
+        // (including all kinds of attributes)
+        let K_cred = format_ident!("K_iss_cred_{}", iss_cred.id);
 
         let iss_cred_type = &iss_cred.cred_type;
 
@@ -705,6 +718,17 @@ fn protocol_macro(
                 }
             }
 
+            if use_muCMZ && (spec == IssueSpec::Hide || spec == IssueSpec::Joint) {
+                /* For each Hide and Joint attribute (for µCMZ): add
+                   attr*X_attr to C.
+                */
+                prepare_code = quote! {
+                    #prepare_code
+                    #C_cred += #scoped_attr *
+                        #pubkey_cred.X[#iss_cred_type::attr_num(#attr_str)];
+                };
+            }
+
             /* For each Reveal attribute: include attr in Request (client will
                pass the value into prepare).  Also store it in the
                ClientState.
@@ -758,8 +782,8 @@ fn protocol_macro(
             */
             if spec == IssueSpec::Set {
                 reply_fields.push_scalar(&scoped_attr.to_string());
-                handle_code_post_auth = quote! {
-                    #handle_code_post_auth
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
                     let #scoped_attr =
                     #iss_cred_id.#attr.ok_or(CMZError::SetAttrMissing(#cred_str,
                     #attr_str))?;
@@ -770,20 +794,36 @@ fn protocol_macro(
                 }
             }
 
-            /* For each Reveal, Implicit, Set, or Joint attribute, add
-               attr*x_attr*P to Q in handle.
-            */
             if spec == IssueSpec::Reveal
                 || spec == IssueSpec::Implicit
                 || spec == IssueSpec::Set
                 || spec == IssueSpec::Joint
             {
-                handle_code_post_auth = quote! {
-                    #handle_code_post_auth
-                    #Q_cred += (#scoped_attr *
-                        #iss_cred_id.privkey.x[#iss_cred_type::attr_num(#attr_str)])
-                        * #P_cred;
-                };
+                if use_muCMZ {
+                    /* For each Reveal, Implicit, Set, or Joint attribute, add
+                       attr*X_attr to K in handle and finalize.
+                    */
+                    handle_code_post_fill = quote! {
+                        #handle_code_post_fill
+                        #K_cred += (#scoped_attr *
+                            #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)]);
+                    };
+                    finalize_code = quote! {
+                        #finalize_code
+                        #K_cred += (#iss_cred_id.#attr.unwrap() *
+                            #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)]);
+                    };
+                } else {
+                    /* For each Reveal, Implicit, Set, or Joint attribute, add
+                       attr*x_attr*P to Q in handle.
+                    */
+                    handle_code_post_auth = quote! {
+                        #handle_code_post_auth
+                        #Q_cred += (#scoped_attr *
+                            #iss_cred_id.privkey.x[#iss_cred_type::attr_num(#attr_str)])
+                            * #P_cred;
+                    };
+                }
             }
         }
 
@@ -848,17 +888,71 @@ fn protocol_macro(
             /* For all Hide and Joint attributes of a single credential to be
                issued (for µCMZ): The client chooses a random s, computes C =
                (\sum_{hide,joint} attr*X_attr) + s*A, where X_attr is the
-               public key for that attribute.  Include s in the ClientState, C
-               in the Request, and the attributes, s, and C in the CliProof.
-               Hide attributes will be passed into prepare on the client side;
-               Joint attributes (client contribution) will be generated randomly
-               by prepare on the client side.  On the issuer side, handle will
-               pick a random b, compute P = b*A, R = b*(x_0*A + C) +
-               \sum_{implicit,reveal,set,joint} x_attr*attr*P.  Include P
-               and R in Reply, and x_0, b, P, R, C in IssProof.  For each
-               implicit,reveal,set,joint attribute, include x_attr and P_attr =
-               attr*P in IssProof.  The client will compute Q = R - s*P.
+               public key for that attribute.  Include s and C in the
+               ClientState, C in the Request, and the attributes, s, and
+               C in the CliProof.  Hide attributes will be passed into
+               prepare on the client side; Joint attributes (client
+               contribution) will be generated randomly by prepare on
+               the client side.  On the issuer side, handle will pick a
+               random b, compute P = b*A, K = C + X_r +
+               \sum_{implicit,reveal,set,joint} attr*X_attr, R =
+               b*(x_0*A + K).  Include P and R in Reply, and x_0, b, P,
+               R, K in IssProof.  For each implicit,reveal,set,joint
+               attribute, include x_attr and P_attr = attr*P in
+               IssProof.  The client will compute K as above, and Q = R
+               - s*P.
             */
+            let R_cred = format_ident!("R_iss_cred_{}", iss_cred.id);
+            let s_cred = format_ident!("s_iss_cred_{}", iss_cred.id);
+            reply_fields.push_point(&P_cred.to_string());
+            reply_fields.push_point(&R_cred.to_string());
+            if cred_hide_joint {
+                clientstate_fields.push_scalar(&s_cred.to_string());
+                clientstate_fields.push_point(&C_cred.to_string());
+                request_fields.push_point(&C_cred.to_string());
+                prepare_code = quote! {
+                    let #s_cred = <Scalar as ff::Field>::random(&mut *rng);
+                    let mut #C_cred = bp.mulA(&#s_cred);
+                    #prepare_code
+                };
+                handle_code_post_fill = quote! {
+                    let mut #K_cred = request.#C_cred + #iss_cred_id.pubkey.Xr.unwrap();
+                    #handle_code_post_fill
+                };
+                finalize_code = quote! {
+                    let mut #K_cred = self.#C_cred + self.#pubkey_cred.Xr.unwrap();
+                    #finalize_code
+                };
+            } else {
+                handle_code_post_fill = quote! {
+                    let mut #K_cred = #iss_cred_id.pubkey.Xr.unwrap();
+                    #handle_code_post_fill
+                };
+                finalize_code = quote! {
+                    let mut #K_cred = self.#pubkey_cred.Xr.unwrap();
+                    #finalize_code
+                };
+            }
+            handle_code_post_auth = quote! {
+                #handle_code_post_auth
+                let #b_cred = <Scalar as ff::Field>::random(&mut *rng);
+                let #P_cred = bp.mulA(&#b_cred);
+                let #R_cred = #b_cred * (bp.mulA(&#iss_cred_id.privkey.x0) + #K_cred);
+            };
+            let finalize_Q_code = if cred_hide_joint {
+                quote! {
+                    #iss_cred_id.MAC.Q = reply.#R_cred - self.#s_cred * reply.#P_cred;
+                }
+            } else {
+                quote! {
+                    #iss_cred_id.MAC.Q = reply.#R_cred;
+                }
+            };
+            finalize_code = quote! {
+                #finalize_code
+                #iss_cred_id.MAC.P = reply.#P_cred;
+                #finalize_Q_code
+            };
         }
 
         any_hide_joint |= cred_hide_joint;
