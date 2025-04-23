@@ -12,6 +12,7 @@ use lazy_static::lazy_static;
 use rand_core::RngCore;
 pub use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use serde_with::{serde_as, DeserializeAs, SerializeAs};
+pub use sigma_compiler::*;
 use thiserror::Error;
 
 // We need wrappers for group::Group and ff::PrimeField elements to be
@@ -110,21 +111,21 @@ const WNAF_SIZE: usize = 6;
 /// basepoint tables
 #[derive(Clone)]
 pub struct CMZBasepoints<G: Group> {
-    A: G,
-    B: G,
+    A_: G,
+    B_: G,
     A_TABLE: WnafBase<G, WNAF_SIZE>,
     B_TABLE: WnafBase<G, WNAF_SIZE>,
 }
 
 impl<G: Group> CMZBasepoints<G> {
     pub fn init(generator_A: G) -> Self {
-        let A = generator_A;
-        let B = G::generator();
-        let A_TABLE = WnafBase::new(A);
-        let B_TABLE = WnafBase::new(B);
+        let A_ = generator_A;
+        let B_ = G::generator();
+        let A_TABLE = WnafBase::new(A_);
+        let B_TABLE = WnafBase::new(B_);
         CMZBasepoints {
-            A,
-            B,
+            A_,
+            B_,
             A_TABLE,
             B_TABLE,
         }
@@ -148,6 +149,12 @@ impl<G: Group> CMZBasepoints<G> {
     pub fn keypairB(&self, rng: &mut impl RngCore) -> (G::Scalar, G) {
         let x = G::Scalar::random(&mut *rng);
         (x, self.mulB(&x))
+    }
+    pub fn A(&self) -> G {
+        self.A_
+    }
+    pub fn B(&self) -> G {
+        self.B_
     }
 }
 
@@ -432,6 +439,10 @@ pub enum CMZError {
     PubkeyMissing(&'static str),
     #[error("credential initialized with wrong protocol")]
     WrongProtocol(&'static str),
+    #[error("client proof did not verify")]
+    CliProofFailed,
+    #[error("issuer proof did not verify")]
+    IssProofFailed,
     #[error("unknown CMZ proof error")]
     Unknown,
 }

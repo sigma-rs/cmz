@@ -429,6 +429,7 @@ enum StructField {
     Point(Ident),
     EncPoint(Ident),
     Pubkey(Ident),
+    ByteVec(Ident),
 }
 
 // Convenience functions to create StructField items
@@ -444,6 +445,9 @@ impl StructField {
     }
     pub fn pubkey(s: &str) -> Self {
         Self::Pubkey(Ident::new(s, Span::call_site().into()))
+    }
+    pub fn bytevec(s: &str) -> Self {
+        Self::ByteVec(Ident::new(s, Span::call_site().into()))
     }
 }
 
@@ -466,6 +470,9 @@ impl StructFieldList {
     pub fn push_pubkey(&mut self, s: &str) {
         self.fields.push(StructField::pubkey(s));
     }
+    pub fn push_bytevec(&mut self, s: &str) {
+        self.fields.push(StructField::bytevec(s));
+    }
     /// Output an iterator consisting of the field names
     pub fn field_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
         self.fields.iter().map(|f| match f {
@@ -473,6 +480,7 @@ impl StructFieldList {
             StructField::Point(id) => id,
             StructField::EncPoint(id) => id,
             StructField::Pubkey(id) => id,
+            StructField::ByteVec(id) => id,
         })
     }
     /// Output a ToTokens of the fields as they would appear in a struct
@@ -493,6 +501,10 @@ impl StructFieldList {
             },
             StructField::Pubkey(id) => quote! {
                 pub #id: CMZPubkey<Point>,
+            },
+            StructField::ByteVec(id) => quote! {
+                #[serde(with = "serde_bytes")]
+                pub #id: Vec<u8>,
             },
         });
         quote! { #(#decls)* }
@@ -531,6 +543,16 @@ fn protocol_macro(
         quote! {}
     };
 
+    // The structure of the issuer's ZKP
+    let mut iss_proof_rand_scalars = Vec::<Ident>::default();
+    let mut iss_proof_priv_scalars = Vec::<Ident>::default();
+    let mut iss_proof_pub_points = Vec::<Ident>::default();
+    let mut iss_proof_const_points = Vec::<Ident>::default();
+    // Use quote! {} to enforce the correct type for
+    // iss_proof_statements, but then drop that entry
+    let mut iss_proof_statements = vec![quote! {}];
+    iss_proof_statements.clear();
+
     /* Credential issuing
 
        For each attribute of each credential to be issued, handle it
@@ -566,6 +588,37 @@ fn protocol_macro(
     // Are there any Hide or Joint attributes in _any_ credential to be
     // issued?
     let mut any_hide_joint = false;
+
+    let A_ident = format_ident!("A_generator");
+    let B_ident = format_ident!("B_generator");
+
+    prepare_code = quote! {
+        #prepare_code
+        let #A_ident = bp.A();
+    };
+    handle_code_pre_fill = quote! {
+        #handle_code_pre_fill
+        let #A_ident = bp.A();
+    };
+    finalize_code = quote! {
+        #finalize_code
+        let #A_ident = bp.A();
+    };
+
+    if proto_spec.issue_creds.len() > 0 {
+        prepare_code = quote! {
+            #prepare_code
+            let #B_ident = bp.B();
+        };
+        handle_code_pre_fill = quote! {
+            #handle_code_pre_fill
+            let #B_ident = bp.B();
+        };
+        finalize_code = quote! {
+            #finalize_code
+            let #B_ident = bp.B();
+        };
+    }
 
     for iss_cred in proto_spec.issue_creds.iter() {
         // Are there any Hide or Joint attributes in this particular
@@ -634,7 +687,7 @@ fn protocol_macro(
         };
         finalize_code = quote! {
             #finalize_code
-            #iss_cred_id.pubkey = self.#pubkey_cred;
+            #iss_cred_id.pubkey = self.#pubkey_cred.clone();
         };
 
         for (attr, &spec) in iss_cred.attrs.iter() {
@@ -879,7 +932,8 @@ fn protocol_macro(
             };
             finalize_code = quote! {
                 #finalize_code
-                #iss_cred_id.MAC.P = reply.#P_cred;
+                let #P_cred = reply.#P_cred;
+                #iss_cred_id.MAC.P = #P_cred;
                 #finalize_Q_code
             };
         }
@@ -933,11 +987,15 @@ fn protocol_macro(
                     #finalize_code
                 };
             }
+            let x0_cred = format_ident!("x0_iss_cred_{}", iss_cred.id);
+            let X0_cred = format_ident!("X0_iss_cred_{}", iss_cred.id);
             handle_code_post_auth = quote! {
                 #handle_code_post_auth
                 let #b_cred = <Scalar as ff::Field>::random(&mut *rng);
                 let #P_cred = bp.mulA(&#b_cred);
-                let #R_cred = #b_cred * (bp.mulA(&#iss_cred_id.privkey.x0) + #K_cred);
+                let #x0_cred = #iss_cred_id.privkey.x0;
+                let #X0_cred = #iss_cred_id.pubkey.X0.unwrap();
+                let #R_cred = #b_cred * (bp.mulA(&#x0_cred) + #K_cred);
             };
             let finalize_Q_code = if cred_hide_joint {
                 quote! {
@@ -950,9 +1008,26 @@ fn protocol_macro(
             };
             finalize_code = quote! {
                 #finalize_code
-                #iss_cred_id.MAC.P = reply.#P_cred;
+                let #P_cred = reply.#P_cred;
+                let #X0_cred = #iss_cred_id.pubkey.X0.unwrap();
+                let #R_cred = reply.#R_cred;
+                #iss_cred_id.MAC.P = #P_cred;
                 #finalize_Q_code
             };
+            // Construct the issuer proof for this credential
+            iss_proof_priv_scalars.push(x0_cred.clone());
+            iss_proof_rand_scalars.push(b_cred.clone());
+            iss_proof_pub_points.push(P_cred.clone());
+            iss_proof_pub_points.push(X0_cred.clone());
+            iss_proof_pub_points.push(K_cred.clone());
+            iss_proof_pub_points.push(R_cred.clone());
+            iss_proof_const_points.push(A_ident.clone());
+            iss_proof_const_points.push(B_ident.clone());
+            iss_proof_statements.push(quote! {
+                #P_cred = #b_cred * #A_ident,
+                #X0_cred = #x0_cred * #B_ident,
+                #R_cred = #x0_cred * #P_cred + #b_cred * #K_cred
+            });
         }
 
         any_hide_joint |= cred_hide_joint;
@@ -969,6 +1044,43 @@ fn protocol_macro(
             let (d,D) = bp.keypairB(&mut *rng);
             #prepare_code
         }
+    }
+
+    if proto_spec.issue_creds.len() > 0 {
+        // The issuer will create a zero-knowledge proof
+        let iss_proof_ident = format_ident!("iss_proof");
+        reply_fields.push_bytevec(&iss_proof_ident.to_string());
+        let iss_params_fields = iss_proof_pub_points
+            .iter()
+            .chain(iss_proof_const_points.iter());
+        let iss_witness_fields = iss_proof_rand_scalars
+            .iter()
+            .chain(iss_proof_priv_scalars.iter());
+        handle_code_post_auth = quote! {
+            #handle_code_post_auth
+            let iss_proof_params = issuer_proof::Params {
+                #(#iss_params_fields,)*
+            };
+            let iss_proof_witness = issuer_proof::Witness {
+                #(#iss_witness_fields,)*
+            };
+            // If prove returns Err here, there's an actual bug.
+            let #iss_proof_ident = issuer_proof::prove(&iss_proof_params,
+                &iss_proof_witness).unwrap();
+        };
+        let cli_params_fields = iss_proof_pub_points
+            .iter()
+            .chain(iss_proof_const_points.iter());
+        finalize_code = quote! {
+            #finalize_code
+            let iss_proof_params = issuer_proof::Params {
+                #(#cli_params_fields,)*
+            };
+            if issuer_proof::verify(&iss_proof_params,
+                &reply.#iss_proof_ident).is_err() {
+                return Err((CMZError::CliProofFailed, self));
+            }
+        };
     }
 
     for show_cred in proto_spec.show_creds.iter() {
@@ -1251,6 +1363,22 @@ fn protocol_macro(
         }
     };
 
+    // The issuer's zero-knowledge proof
+    let iss_proof = {
+        quote! {
+            sigma_compiler! { issuer_proof<Point>,
+                (#(#iss_proof_rand_scalars),*),
+                (#(#iss_proof_priv_scalars),*),
+                (), // pub_scalars
+                (), // cind_points
+                (#(#iss_proof_pub_points),*),
+                (#(#iss_proof_const_points),*),
+                #(#iss_proof_statements),*
+            }
+        }
+    };
+    println!("iss_proof = {iss_proof}");
+
     // The argument list for the client's prepare function.  There is an
     // immutable reference for each credential to be shown, and an owned
     // value for each credential to be issued.
@@ -1470,6 +1598,7 @@ fn protocol_macro(
             impl ClientState {
                 pub fn finalize(self, reply: Reply)
                     -> #rettype {
+                    let bp = cmz_basepoints::<Point>();
                     #(#cred_decls)*
                     #finalize_code
                     #retval
@@ -1500,6 +1629,7 @@ fn protocol_macro(
             #group_types
             #params_struct
             #messages
+            #iss_proof
             #client_side
             #issuer_side
         }
