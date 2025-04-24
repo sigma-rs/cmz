@@ -768,8 +768,8 @@ fn protocol_macro(
                 };
                 finalize_code = quote! {
                     #finalize_code
-                    let #scoped_attr = self.#scoped_attr + reply.#scoped_attr;
-                    #iss_cred_id.#attr = Some(#scoped_attr);
+                    let #scoped_attr = reply.#scoped_attr;
+                    #iss_cred_id.#attr = Some(self.#scoped_attr + reply.#scoped_attr);
                 };
             }
 
@@ -922,9 +922,18 @@ fn protocol_macro(
                         #K_cred += (#scoped_attr *
                             #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)]);
                     };
+                    // For a Joint attribute, we only want to use the
+                    // issuer's contribution (which is in #scoped_attr),
+                    // not #iss_cred_id.#attr, which is the sum of the
+                    // client's and issuer's contributions
+                    let use_attr = if spec == IssueSpec::Joint {
+                        quote! { #scoped_attr }
+                    } else {
+                        quote! { #iss_cred_id.#attr.unwrap() }
+                    };
                     finalize_code = quote! {
                         #finalize_code
-                        #K_cred += (#iss_cred_id.#attr.unwrap() *
+                        #K_cred += (#use_attr *
                             #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)]);
                     };
                 } else {
@@ -935,10 +944,16 @@ fn protocol_macro(
                         #handle_code_post_auth
                         #Q_cred += (#scoped_attr * #x_attr) * #P_cred;
                     };
-                    finalize_code = quote! {
-                        #finalize_code
-                        let #scoped_attr = #iss_cred_id.#attr.unwrap();
-                    };
+                    // For Joint attributes, we only want to use the
+                    // issuer's contribution.  We already set
+                    // #scoped_attr to the issuer's contribution earlier
+                    // on.
+                    if spec != IssueSpec::Joint {
+                        finalize_code = quote! {
+                            #finalize_code
+                            let #scoped_attr = #iss_cred_id.#attr.unwrap();
+                        };
+                    }
                     eq1_statement = quote! {
                         #eq1_statement + #x_attr * ( #scoped_attr * #P_cred )
                     };
