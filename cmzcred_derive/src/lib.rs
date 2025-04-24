@@ -743,7 +743,7 @@ fn protocol_macro(
             }
 
             if !use_muCMZ && (spec == IssueSpec::Hide || spec == IssueSpec::Joint) {
-                /* For each Hide and Joint attribute (for CMZ): Compute an
+                /* For each Hide and Joint attribute (for CMZ14): Compute an
                    exponential El Gamal encryption (of the attribute) E_attr =
                    (r_attr*B, attr*B + r_attr*D) for random r_attr.  Include E_attr
                    in the Request, attr in the ClientState, and attr,
@@ -882,7 +882,7 @@ fn protocol_macro(
 
         if !use_muCMZ {
             /* For all Hide and Joint attributes of a single credential to be
-               issued (for CMZ): the issuer chooses a random b, computes
+               issued (for CMZ14): the issuer chooses a random b, computes
                P = b*B, E_Q = (0,b*x_0*B) + \sum_{hide,joint} b*x_attr*E_attr
                + (0,\sum_{implicit,reveal,set,joint} b*x_attr*attr*B)
                (note that E_Q and each E_attr are all pairs of Points; the
@@ -1033,8 +1033,8 @@ fn protocol_macro(
         any_hide_joint |= cred_hide_joint;
     }
 
-    /* If there are _any_ Hide or Joint attributes in CMZ (as opposed to
-       µCMZ), the client generates an El Gamal keypair (d, D=d*B).
+    /* If there are _any_ Hide or Joint attributes in CMZ14 (as opposed
+       to µCMZ), the client generates an El Gamal keypair (d, D=d*B).
        Include d in the ClientState and D in the Request.
     */
     if any_hide_joint && !use_muCMZ {
@@ -1638,7 +1638,7 @@ fn protocol_macro(
 }
 
 /** There are six variants of the `CMZProtocol` macro.  The ones starting
-  with "CMZ" create protocol implementations using the original CMZ
+  with "CMZ" create protocol implementations using the original CMZ14
   issuing protocol.  The ones starting with "muCMZ" using the more
   efficient µCMZ protocol.  The ones with "Cli" only create the code
   for the client side of the protocol.  The ones with "Iss" only create
