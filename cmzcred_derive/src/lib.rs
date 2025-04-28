@@ -608,7 +608,7 @@ fn protocol_macro(
         let #A_ident = bp.A();
     };
 
-    if proto_spec.issue_creds.len() > 0 {
+    if !use_muCMZ || proto_spec.issue_creds.len() > 0 {
         prepare_code = quote! {
             #prepare_code
             let #B_ident = bp.B();
@@ -655,6 +655,8 @@ fn protocol_macro(
         // The completed Pedersen commitment to the attributes
         // (including all kinds of attributes)
         let K_cred = format_ident!("K_iss_cred_{}", iss_cred.id);
+        // The ZKP statement that proves the format of C
+        let mut C_statement = quote! {};
 
         let iss_cred_type = &iss_cred.cred_type;
 
@@ -815,6 +817,7 @@ fn protocol_macro(
                 eq1_statement = quote! {
                     #eq1_statement + #t_attr * #enc1_attr
                 };
+                cli_proof_priv_scalars.push(scoped_attr.clone());
                 prepare_code = quote! {
                     #prepare_code
                     let #r_attr = <Scalar as ff::Field>::random(&mut *rng);
@@ -846,9 +849,18 @@ fn protocol_macro(
                 */
                 prepare_code = quote! {
                     #prepare_code
-                    #C_cred += #scoped_attr *
-                        #pubkey_cred.X[#iss_cred_type::attr_num(#attr_str)];
+                    let #X_attr = #pubkey_cred.X[#iss_cred_type::attr_num(#attr_str)];
+                    #C_cred += #scoped_attr * #X_attr;
                 };
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
+                    let #X_attr = #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)];
+                };
+                C_statement = quote! {
+                    #C_statement + #scoped_attr * #X_attr
+                };
+                cli_proof_priv_scalars.push(scoped_attr.clone());
+                cli_proof_cind_points.push(X_attr.clone());
             }
 
             /* For each Reveal attribute: include attr in Request (client will
@@ -858,6 +870,7 @@ fn protocol_macro(
             if spec == IssueSpec::Reveal {
                 request_fields.push_scalar(&scoped_attr);
                 clientstate_fields.push_scalar(&scoped_attr);
+                cli_proof_pub_scalars.push(scoped_attr.clone());
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
@@ -881,6 +894,7 @@ fn protocol_macro(
             */
             if spec == IssueSpec::Implicit {
                 clientstate_fields.push_scalar(&scoped_attr);
+                cli_proof_pub_scalars.push(scoped_attr.clone());
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
@@ -1055,8 +1069,6 @@ fn protocol_macro(
             iss_proof_rand_scalars.push(xr_cred.clone());
             iss_proof_pub_points.push(X0_cred.clone());
             iss_proof_rand_scalars.push(b_cred.clone());
-            iss_proof_const_points.push(A_ident.clone());
-            iss_proof_const_points.push(B_ident.clone());
             iss_proof_statements.push(quote! {
                 #X0_cred = #x0_cred * #B_ident + #xr_cred * #A_ident,
             });
@@ -1090,19 +1102,26 @@ fn protocol_macro(
                 clientstate_fields.push_scalar(&s_cred);
                 clientstate_fields.push_point(&C_cred);
                 request_fields.push_point(&C_cred);
+                cli_proof_pub_points.push(C_cred.clone());
+                cli_proof_rand_scalars.push(s_cred.clone());
                 prepare_code = quote! {
                     let #s_cred = <Scalar as ff::Field>::random(&mut *rng);
                     let mut #C_cred = bp.mulA(&#s_cred);
                     #prepare_code
                 };
                 handle_code_post_fill = quote! {
-                    let mut #K_cred = request.#C_cred + #iss_cred_id.pubkey.Xr.unwrap();
+                    let #C_cred = request.#C_cred;
+                    let mut #K_cred = #C_cred + #iss_cred_id.pubkey.Xr.unwrap();
                     #handle_code_post_fill
                 };
                 finalize_code = quote! {
                     let mut #K_cred = self.#C_cred + self.#pubkey_cred.Xr.unwrap();
                     #finalize_code
                 };
+                // Construct the client proof for this credential
+                cli_proof_statements.push(quote! {
+                    #C_cred = #s_cred * #A_ident #C_statement,
+                });
             } else {
                 handle_code_post_fill = quote! {
                     let mut #K_cred = #iss_cred_id.pubkey.Xr.unwrap();
@@ -1145,14 +1164,14 @@ fn protocol_macro(
             iss_proof_pub_points.push(X0_cred.clone());
             iss_proof_pub_points.push(K_cred.clone());
             iss_proof_pub_points.push(R_cred.clone());
-            iss_proof_const_points.push(A_ident.clone());
-            iss_proof_const_points.push(B_ident.clone());
             iss_proof_statements.push(quote! {
                 #P_cred = #b_cred * #A_ident,
                 #X0_cred = #x0_cred * #B_ident,
                 #R_cred = #x0_cred * #P_cred + #b_cred * #K_cred,
             });
         }
+        iss_proof_const_points.push(A_ident.clone());
+        iss_proof_const_points.push(B_ident.clone());
 
         any_hide_joint |= cred_hide_joint;
     }
@@ -1199,18 +1218,18 @@ fn protocol_macro(
             let #iss_proof_ident = issuer_proof::prove(&iss_proof_params,
                 &iss_proof_witness).unwrap();
         };
-        let cli_params_fields = iss_proof_pub_points
+        let cli_iss_params_fields = iss_proof_pub_points
             .iter()
             .chain(iss_proof_const_points.iter())
             .chain(iss_proof_pub_scalars.iter());
         finalize_code = quote! {
             #finalize_code
             let iss_proof_params = issuer_proof::Params {
-                #(#cli_params_fields,)*
+                #(#cli_iss_params_fields,)*
             };
             if issuer_proof::verify(&iss_proof_params,
                 &reply.#iss_proof_ident).is_err() {
-                return Err((CMZError::CliProofFailed, self));
+                return Err((CMZError::IssProofFailed, self));
             }
         };
     }
@@ -1227,10 +1246,8 @@ fn protocol_macro(
         let zQ_cred = format_ident!("zQ_show_cred_{}", show_cred.id);
         // The Pedersen commitment to Q
         let CQ_cred = format_ident!("CQ_show_cred_{}", show_cred.id);
-        // The verification point (client version)
-        let Vc_cred = format_ident!("Vc_show_cred_{}", show_cred.id);
-        // The verification point (issuer version)
-        let Vi_cred = format_ident!("Vi_show_cred_{}", show_cred.id);
+        // The verification point
+        let V_cred = format_ident!("V_show_cred_{}", show_cred.id);
         // The coefficient (on P) of the MAC on the Reveal and Implicit
         // attributes, computed by the issuer
         let q_cred = format_ident!("q_show_cred_{}", show_cred.id);
@@ -1267,7 +1284,7 @@ fn protocol_macro(
 
         // Rerandomize the MAC and construct a Pedersen commitment to Q
         // Also start constructing the client's version of the
-        // verification point Vc (which will be updated with each Hide
+        // verification point V (which will be updated with each Hide
         // attribute below)
         prepare_code = quote! {
             #prepare_code
@@ -1276,10 +1293,23 @@ fn protocol_macro(
             let #Q_cred = #t_cred * #show_cred_id.MAC.Q;
             let #zQ_cred = <Scalar as ff::Field>::random(&mut *rng);
             let #CQ_cred = #Q_cred - bp.mulB(&#zQ_cred);
-            let mut #Vc_cred = bp.mulB(&#zQ_cred);
+            let mut #V_cred = bp.mulB(&#zQ_cred);
+        };
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            let #P_cred = request.#P_cred;
         };
         request_fields.push_point(&P_cred);
         request_fields.push_point(&CQ_cred);
+        cli_proof_rand_scalars.push(zQ_cred.clone());
+        cli_proof_cind_points.push(P_cred.clone());
+        cli_proof_pub_points.push(V_cred.clone());
+
+        // The ZKP statement that proves the format of V
+        let mut V_statement = quote! {
+            #V_cred = #zQ_cred * #B_ident
+        };
+
         // Start constructing the issuer's version of the verification
         // point Vi (which will be updated with each Hide attribute below)
         // and the MAC on the Reveal and Implicit attributes
@@ -1292,7 +1322,7 @@ fn protocol_macro(
         };
         handle_code_post_fill = quote! {
             #handle_code_post_fill
-            let mut #Vi_cred = -request.#CQ_cred;
+            let mut #V_cred = -request.#CQ_cred;
             let mut #q_cred = #q_init;
         };
 
@@ -1302,6 +1332,9 @@ fn protocol_macro(
 
             // The scoped attribute name
             let scoped_attr = format_ident!("show_{}attr_{}_{}", spec.abbr(), show_cred.id, attr);
+
+            // The public key for this attribute
+            let X_attr = format_ident!("X_{}", scoped_attr);
 
             // Remember the mapping from the credential and attribute
             // name to the scoped attribute
@@ -1326,13 +1359,25 @@ fn protocol_macro(
                     #prepare_code
                     let #z_attr = <Scalar as ff::Field>::random(&mut *rng);
                     let #C_attr = #scoped_attr * #P_cred + bp.mulA(&#z_attr);
-                    #Vc_cred += #z_attr *
-                        #show_cred_id.pubkey.X[#show_cred_type::attr_num(#attr_str)];
+                    let #X_attr = #show_cred_id.pubkey.X[#show_cred_type::attr_num(#attr_str)];
+                    #V_cred += #z_attr * #X_attr;
                 };
                 handle_code_post_fill = quote! {
                     #handle_code_post_fill
-                    #Vi_cred += #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)]
-                        * request.#C_attr;
+                    let #C_attr = request.#C_attr;
+                    let #X_attr = #show_cred_id.pubkey.X[#show_cred_type::attr_num(#attr_str)];
+                    #V_cred += #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)]
+                        * #C_attr;
+                };
+                cli_proof_priv_scalars.push(scoped_attr.clone());
+                cli_proof_rand_scalars.push(z_attr.clone());
+                cli_proof_pub_points.push(C_attr.clone());
+                cli_proof_cind_points.push(X_attr.clone());
+                cli_proof_statements.push(quote! {
+                    #C_attr = #scoped_attr * #P_cred + #z_attr * #A_ident,
+                });
+                V_statement = quote! {
+                    #V_statement + #z_attr * #X_attr
                 };
             }
 
@@ -1384,20 +1429,68 @@ fn protocol_macro(
         // Verification point Vi
         handle_code_post_fill = quote! {
             #handle_code_post_fill
-            #Vi_cred += #q_cred * request.#P_cred;
+            #V_cred += #q_cred * #P_cred;
         };
-        /*
-        // Check that Vi == Vc
-        handle_code_post_fill = quote! {
-            #handle_code_post_fill
-            println!("Vi = {:#?}", #Vi_cred.to_bytes());
-        };
+
+        cli_proof_statements.push(quote! {
+            #V_statement,
+        });
+    }
+    cli_proof_const_points.push(A_ident.clone());
+    cli_proof_const_points.push(B_ident.clone());
+
+    for paramid in proto_spec.params.iter() {
+        let scoped_param = format_ident!("param_{}", paramid);
         prepare_code = quote! {
             #prepare_code
-            println!("Vc = {:#?}", #Vc_cred.to_bytes());
+            let #scoped_param = params.#paramid;
         };
-        */
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            let #scoped_param = params.#paramid;
+        };
+        cli_proof_pub_scalars.push(scoped_param.clone());
+        cli_proof_idmap.insert(("".to_string(), paramid.to_string()), scoped_param.clone());
     }
+
+    // The client will create a zero-knowledge proof
+    let cli_proof_ident = format_ident!("cli_proof");
+    request_fields.push_bytevec(&cli_proof_ident);
+    let cli_params_fields = cli_proof_pub_points
+        .iter()
+        .chain(cli_proof_const_points.iter())
+        .chain(cli_proof_cind_points.iter())
+        .chain(cli_proof_pub_scalars.iter());
+    let cli_witness_fields = cli_proof_rand_scalars
+        .iter()
+        .chain(cli_proof_priv_scalars.iter());
+    prepare_code = quote! {
+        #prepare_code
+        let cli_proof_params = client_proof::Params {
+            #(#cli_params_fields,)*
+        };
+        let cli_proof_witness = client_proof::Witness {
+            #(#cli_witness_fields,)*
+        };
+        // If prove returns Err here, there's an actual bug.
+        let #cli_proof_ident = client_proof::prove(&cli_proof_params,
+            &cli_proof_witness).unwrap();
+    };
+    let iss_cli_params_fields = cli_proof_pub_points
+        .iter()
+        .chain(cli_proof_const_points.iter())
+        .chain(cli_proof_cind_points.iter())
+        .chain(cli_proof_pub_scalars.iter());
+    handle_code_post_fill = quote! {
+        #handle_code_post_fill
+        let cli_proof_params = client_proof::Params {
+            #(#iss_cli_params_fields,)*
+        };
+        if client_proof::verify(&cli_proof_params,
+            &request.#cli_proof_ident).is_err() {
+            return Err(CMZError::CliProofFailed);
+        }
+    };
 
     // Build the Params struct, if we have params
     let params_struct = if has_params {
@@ -1504,7 +1597,11 @@ fn protocol_macro(
 
     // Massage the statements provided in the protocol spec to change
     // any expression of the form "L.id" (a credential name and an
-    // attribute name) into the corresponding scoped attribute
+    // attribute name) into the corresponding scoped attribute.
+    // Bare identifiers that are protocol parameter names also get
+    // modified into the corresponding scoped attribute.  These names
+    // are stored in the idmap with an empty string for the credential
+    // name.
 
     struct StatementScoper<'a> {
         idmap: &'a HashMap<(String, String), Ident>,
@@ -1521,8 +1618,18 @@ fn protocol_macro(
                                 self.idmap.get(&(credid.to_string(), attrid.to_string()))
                             {
                                 *node = parse_quote! { #scopedid };
+                                return;
                             }
                         }
+                    }
+                }
+            }
+
+            if let Expr::Path(expath) = node {
+                if let Some(id) = expath.path.get_ident() {
+                    if let Some(scopedparam) = self.idmap.get(&("".to_string(), id.to_string())) {
+                        *node = parse_quote! { #scopedparam };
+                        return;
                     }
                 }
             }
@@ -1695,6 +1802,13 @@ fn protocol_macro(
             quote! { () }
         };
 
+        // The assignment of the return value of the callback
+        let fill_creds_assign = if has_params {
+            quote! { let params = }
+        } else {
+            quote! {}
+        };
+
         // The argument list for the issuer's authorize callback
         let authorize_args = proto_spec
             .show_creds
@@ -1743,7 +1857,7 @@ fn protocol_macro(
                 let bp = cmz_basepoints::<Point>();
                 #(#cred_decls)*
                 #handle_code_pre_fill
-                fill_creds(#(#fill_creds_params)*)?;
+                #fill_creds_assign fill_creds(#(#fill_creds_params)*)?;
                 #handle_code_post_fill
                 authorize(#(#authorize_params)*)?;
                 #handle_code_post_auth
@@ -1824,6 +1938,7 @@ fn protocol_macro(
             #group_types
             #params_struct
             #messages
+            #cli_proof
             #iss_proof
             #client_side
             #issuer_side
