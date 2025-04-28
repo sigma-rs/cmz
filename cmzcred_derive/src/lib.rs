@@ -20,9 +20,10 @@ use quote::{format_ident, quote, ToTokens};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
+use syn::visit_mut::{self, VisitMut};
 use syn::{
-    braced, bracketed, parse_macro_input, token, Data, DataStruct, DeriveInput, Expr, Fields,
-    FieldsNamed, Ident, Token, Visibility,
+    braced, bracketed, parse_macro_input, parse_quote, token, Data, DataStruct, DeriveInput, Expr,
+    Fields, FieldsNamed, Ident, Member, Token, Visibility,
 };
 
 fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStream {
@@ -524,10 +525,28 @@ fn protocol_macro(
         quote! {}
     };
 
+    // The structure of the client's ZKP
+    let mut cli_proof_rand_scalars = Vec::<Ident>::default();
+    let mut cli_proof_priv_scalars = Vec::<Ident>::default();
+    let mut cli_proof_pub_scalars = Vec::<Ident>::default();
+    let mut cli_proof_cind_points = Vec::<Ident>::default();
+    let mut cli_proof_pub_points = Vec::<Ident>::default();
+    let mut cli_proof_const_points = Vec::<Ident>::default();
+    // Use quote! {} to enforce the correct type for
+    // iss_proof_statements, but then drop that entry
+    let mut cli_proof_statements = vec![quote! {}];
+    cli_proof_statements.clear();
+    // A map from the credential name and attribute name (as Strings) to
+    // the scoped attribute identifier.  This map is used to translate
+    // expressions like `L.id` in the user-provided statements into the
+    // appropriate identifier.
+    let mut cli_proof_idmap = HashMap::<(String, String), Ident>::default();
+
     // The structure of the issuer's ZKP
     let mut iss_proof_rand_scalars = Vec::<Ident>::default();
     let mut iss_proof_priv_scalars = Vec::<Ident>::default();
     let mut iss_proof_pub_scalars = Vec::<Ident>::default();
+    // The issuer has no cind_points
     let mut iss_proof_pub_points = Vec::<Ident>::default();
     let mut iss_proof_const_points = Vec::<Ident>::default();
     // Use quote! {} to enforce the correct type for
@@ -685,6 +704,13 @@ fn protocol_macro(
 
             // The scoped attribute name
             let scoped_attr = format_ident!("iss_{}attr_{}_{}", spec.abbr(), iss_cred.id, attr);
+
+            // Remember the mapping from the credential and attribute
+            // name to the scoped attribute
+            cli_proof_idmap.insert(
+                (iss_cred.id.to_string(), attr.to_string()),
+                scoped_attr.clone(),
+            );
 
             // The private and public key for this attribute
             let x_attr = format_ident!("x_{}", scoped_attr);
@@ -1277,6 +1303,13 @@ fn protocol_macro(
             // The scoped attribute name
             let scoped_attr = format_ident!("show_{}attr_{}_{}", spec.abbr(), show_cred.id, attr);
 
+            // Remember the mapping from the credential and attribute
+            // name to the scoped attribute
+            cli_proof_idmap.insert(
+                (show_cred.id.to_string(), attr.to_string()),
+                scoped_attr.clone(),
+            );
+
             if spec == ShowSpec::Hide {
                 prepare_code = quote! {
                     #prepare_code
@@ -1468,6 +1501,62 @@ fn protocol_macro(
             }
         }
     };
+
+    // Massage the statements provided in the protocol spec to change
+    // any expression of the form "L.id" (a credential name and an
+    // attribute name) into the corresponding scoped attribute
+
+    struct StatementScoper<'a> {
+        idmap: &'a HashMap<(String, String), Ident>,
+    }
+
+    impl<'a> VisitMut for StatementScoper<'a> {
+        fn visit_expr_mut(&mut self, node: &mut Expr) {
+            if let Expr::Field(exfld) = node {
+                let base = *exfld.base.clone();
+                if let Expr::Path(basepath) = base {
+                    if let Member::Named(attrid) = &exfld.member {
+                        if let Some(credid) = basepath.path.get_ident() {
+                            if let Some(scopedid) =
+                                self.idmap.get(&(credid.to_string(), attrid.to_string()))
+                            {
+                                *node = parse_quote! { #scopedid };
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Unless we bailed out above, continue with the default
+            // traversal
+            visit_mut::visit_expr_mut(self, node);
+        }
+    }
+
+    let mut statement_scoper = StatementScoper {
+        idmap: &cli_proof_idmap,
+    };
+    let mut cli_proof_scoped_statements = proto_spec.statements.clone();
+    cli_proof_scoped_statements
+        .iter_mut()
+        .for_each(|expr| statement_scoper.visit_expr_mut(expr));
+
+    // The client's zero-knowledge proof
+    let cli_proof = {
+        quote! {
+            sigma_compiler! { client_proof<Point>,
+                (#(#cli_proof_rand_scalars),*),
+                (#(#cli_proof_priv_scalars),*),
+                (#(#cli_proof_pub_scalars),*),
+                (#(#cli_proof_cind_points),*),
+                (#(#cli_proof_pub_points),*),
+                (#(#cli_proof_const_points),*),
+                #(#cli_proof_scoped_statements,)*
+                #(#cli_proof_statements)*
+            }
+        }
+    };
+    println!("cli_proof = {cli_proof}");
 
     // The issuer's zero-knowledge proof
     let iss_proof = {
