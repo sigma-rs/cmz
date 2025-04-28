@@ -15,7 +15,7 @@ the CMZCredential trait for the declared credential.
 */
 
 use darling::FromDeriveInput;
-use proc_macro::{Span, TokenStream};
+use proc_macro::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream, Result};
@@ -432,25 +432,6 @@ enum StructField {
     ByteVec(Ident),
 }
 
-// Convenience functions to create StructField items
-impl StructField {
-    pub fn scalar(s: &str) -> Self {
-        Self::Scalar(Ident::new(s, Span::call_site().into()))
-    }
-    pub fn point(s: &str) -> Self {
-        Self::Point(Ident::new(s, Span::call_site().into()))
-    }
-    pub fn encpoint(s: &str) -> Self {
-        Self::EncPoint(Ident::new(s, Span::call_site().into()))
-    }
-    pub fn pubkey(s: &str) -> Self {
-        Self::Pubkey(Ident::new(s, Span::call_site().into()))
-    }
-    pub fn bytevec(s: &str) -> Self {
-        Self::ByteVec(Ident::new(s, Span::call_site().into()))
-    }
-}
-
 // A list of StructField items
 #[derive(Default)]
 struct StructFieldList {
@@ -458,20 +439,20 @@ struct StructFieldList {
 }
 
 impl StructFieldList {
-    pub fn push_scalar(&mut self, s: &str) {
-        self.fields.push(StructField::scalar(s));
+    pub fn push_scalar(&mut self, s: &Ident) {
+        self.fields.push(StructField::Scalar(s.clone()));
     }
-    pub fn push_point(&mut self, s: &str) {
-        self.fields.push(StructField::point(s));
+    pub fn push_point(&mut self, s: &Ident) {
+        self.fields.push(StructField::Point(s.clone()));
     }
-    pub fn push_encpoint(&mut self, s: &str) {
-        self.fields.push(StructField::encpoint(s));
+    pub fn push_encpoint(&mut self, s: &Ident) {
+        self.fields.push(StructField::EncPoint(s.clone()));
     }
-    pub fn push_pubkey(&mut self, s: &str) {
-        self.fields.push(StructField::pubkey(s));
+    pub fn push_pubkey(&mut self, s: &Ident) {
+        self.fields.push(StructField::Pubkey(s.clone()));
     }
-    pub fn push_bytevec(&mut self, s: &str) {
-        self.fields.push(StructField::bytevec(s));
+    pub fn push_bytevec(&mut self, s: &Ident) {
+        self.fields.push(StructField::ByteVec(s.clone()));
     }
     /// Output an iterator consisting of the field names
     pub fn field_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
@@ -592,7 +573,8 @@ fn protocol_macro(
 
     let A_ident = format_ident!("A_generator");
     let B_ident = format_ident!("B_generator");
-    let D_ident = format_ident!("D");
+    let d_ident = format_ident!("d_privkey");
+    let D_ident = format_ident!("D_pubkey");
 
     prepare_code = quote! {
         #prepare_code
@@ -687,7 +669,7 @@ fn protocol_macro(
 
         // Stash the public key in prepare and use it to fill in the
         // public key of the completed credential in finalize
-        clientstate_fields.push_pubkey(&pubkey_cred.to_string());
+        clientstate_fields.push_pubkey(&pubkey_cred);
         prepare_code = quote! {
             #prepare_code
             let #pubkey_cred = #iss_cred_id.pubkey;
@@ -737,7 +719,7 @@ fn protocol_macro(
                    prepare) goes in the ClientState, and from there to
                    to the generated credential in finalize.
                 */
-                clientstate_fields.push_scalar(&scoped_attr.to_string());
+                clientstate_fields.push_scalar(&scoped_attr);
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
@@ -756,8 +738,8 @@ fn protocol_macro(
                    ClientState, and the issuer's part of the attribute
                    (randomly generated) goes in the Reply.
                 */
-                clientstate_fields.push_scalar(&scoped_attr.to_string());
-                reply_fields.push_scalar(&scoped_attr.to_string());
+                clientstate_fields.push_scalar(&scoped_attr);
+                reply_fields.push_scalar(&scoped_attr);
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr = <Scalar as ff::Field>::random(&mut *rng);
@@ -790,9 +772,9 @@ fn protocol_macro(
                 let r_attr = format_ident!("r_{}", scoped_attr);
                 let t_attr = format_ident!("t_{}", scoped_attr);
                 let T_attr = format_ident!("T_{}", scoped_attr);
-                request_fields.push_encpoint(&enc_attr.to_string());
-                clientstate_fields.push_encpoint(&enc_attr.to_string());
-                reply_fields.push_point(&T_attr.to_string());
+                request_fields.push_encpoint(&enc_attr);
+                clientstate_fields.push_encpoint(&enc_attr);
+                reply_fields.push_point(&T_attr);
                 iss_proof_priv_scalars.push(t_attr.clone());
                 iss_proof_pub_points.push(T_attr.clone());
                 iss_proof_pub_points.push(enc0_attr.clone());
@@ -812,7 +794,7 @@ fn protocol_macro(
                     let #r_attr = <Scalar as ff::Field>::random(&mut *rng);
                     let #enc_attr = (bp.mulB(&#r_attr),
                         bp.mulB(&#scoped_attr) +
-                        #r_attr * D);
+                        #r_attr * #D_ident);
                 };
                 handle_code_post_auth = quote! {
                     #handle_code_post_auth
@@ -848,8 +830,8 @@ fn protocol_macro(
                ClientState.
             */
             if spec == IssueSpec::Reveal {
-                request_fields.push_scalar(&scoped_attr.to_string());
-                clientstate_fields.push_scalar(&scoped_attr.to_string());
+                request_fields.push_scalar(&scoped_attr);
+                clientstate_fields.push_scalar(&scoped_attr);
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
@@ -872,7 +854,7 @@ fn protocol_macro(
                will be filled in by fill_creds on the issuer side.
             */
             if spec == IssueSpec::Implicit {
-                clientstate_fields.push_scalar(&scoped_attr.to_string());
+                clientstate_fields.push_scalar(&scoped_attr);
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
@@ -895,7 +877,7 @@ fn protocol_macro(
               by fill_creds.  Include the value in Reply.
             */
             if spec == IssueSpec::Set {
-                reply_fields.push_scalar(&scoped_attr.to_string());
+                reply_fields.push_scalar(&scoped_attr);
                 handle_code_post_fill = quote! {
                     #handle_code_post_fill
                     let #scoped_attr =
@@ -976,17 +958,17 @@ fn protocol_macro(
             let x0_cred = format_ident!("x0_iss_cred_{}", iss_cred.id);
             let xr_cred = format_ident!("xr_cred{}", iss_cred.id);
             let X0_cred = format_ident!("X0_iss_cred_{}", iss_cred.id);
-            reply_fields.push_point(&P_cred.to_string());
+            reply_fields.push_point(&P_cred);
             if cred_hide_joint {
-                reply_fields.push_encpoint(&EQ_cred.to_string());
+                reply_fields.push_encpoint(&EQ_cred);
             } else {
-                reply_fields.push_point(&Q_cred.to_string());
+                reply_fields.push_point(&Q_cred);
             }
             let EQ_cred_code_pre = if cred_hide_joint {
                 quote! {
                     let #s_cred = <Scalar as ff::Field>::random(&mut *rng);
-                    let D = request.D;
-                    let mut #EQ_cred = (bp.mulB(&#s_cred), #s_cred * D);
+                    let #D_ident = request.#D_ident;
+                    let mut #EQ_cred = (bp.mulB(&#s_cred), #s_cred * #D_ident);
                 }
             } else {
                 quote! {}
@@ -1025,7 +1007,7 @@ fn protocol_macro(
                 quote! {
                     let #EQ0_cred = reply.#EQ_cred.0;
                     let #EQ1_cred = reply.#EQ_cred.1;
-                    #iss_cred_id.MAC.Q = #EQ1_cred - self.d * #EQ0_cred;
+                    #iss_cred_id.MAC.Q = #EQ1_cred - self.#d_ident * #EQ0_cred;
                 }
             } else {
                 quote! {
@@ -1076,12 +1058,12 @@ fn protocol_macro(
             let s_cred = format_ident!("s_iss_cred_{}", iss_cred.id);
             let x0_cred = format_ident!("x0_iss_cred_{}", iss_cred.id);
             let X0_cred = format_ident!("X0_iss_cred_{}", iss_cred.id);
-            reply_fields.push_point(&P_cred.to_string());
-            reply_fields.push_point(&R_cred.to_string());
+            reply_fields.push_point(&P_cred);
+            reply_fields.push_point(&R_cred);
             if cred_hide_joint {
-                clientstate_fields.push_scalar(&s_cred.to_string());
-                clientstate_fields.push_point(&C_cred.to_string());
-                request_fields.push_point(&C_cred.to_string());
+                clientstate_fields.push_scalar(&s_cred);
+                clientstate_fields.push_point(&C_cred);
+                request_fields.push_point(&C_cred);
                 prepare_code = quote! {
                     let #s_cred = <Scalar as ff::Field>::random(&mut *rng);
                     let mut #C_cred = bp.mulA(&#s_cred);
@@ -1154,16 +1136,16 @@ fn protocol_macro(
        Include d in the ClientState and D in the Request.
     */
     if any_hide_joint && !use_muCMZ {
-        clientstate_fields.push_scalar("d");
-        clientstate_fields.push_point("D");
-        request_fields.push_point("D");
+        clientstate_fields.push_scalar(&d_ident);
+        clientstate_fields.push_point(&D_ident);
+        request_fields.push_point(&D_ident);
         prepare_code = quote! {
-            let (d,D) = bp.keypairB(&mut *rng);
+            let (#d_ident,#D_ident) = bp.keypairB(&mut *rng);
             #prepare_code
         };
         finalize_code = quote! {
             #finalize_code
-            let #D_ident = self.D;
+            let #D_ident = self.#D_ident;
         };
         iss_proof_pub_points.push(D_ident.clone());
     }
@@ -1171,7 +1153,7 @@ fn protocol_macro(
     if proto_spec.issue_creds.len() > 0 {
         // The issuer will create a zero-knowledge proof
         let iss_proof_ident = format_ident!("iss_proof");
-        reply_fields.push_bytevec(&iss_proof_ident.to_string());
+        reply_fields.push_bytevec(&iss_proof_ident);
         let iss_params_fields = iss_proof_pub_points
             .iter()
             .chain(iss_proof_const_points.iter())
@@ -1270,8 +1252,8 @@ fn protocol_macro(
             let #CQ_cred = #Q_cred - bp.mulB(&#zQ_cred);
             let mut #Vc_cred = bp.mulB(&#zQ_cred);
         };
-        request_fields.push_point(&P_cred.to_string());
-        request_fields.push_point(&CQ_cred.to_string());
+        request_fields.push_point(&P_cred);
+        request_fields.push_point(&CQ_cred);
         // Start constructing the issuer's version of the verification
         // point Vi (which will be updated with each Hide attribute below)
         // and the MAC on the Reveal and Implicit attributes
@@ -1306,7 +1288,7 @@ fn protocol_macro(
                 // and update the verification point
                 let z_attr = format_ident!("z_{}", scoped_attr);
                 let C_attr = format_ident!("C_{}", scoped_attr);
-                request_fields.push_point(&C_attr.to_string());
+                request_fields.push_point(&C_attr);
                 prepare_code = quote! {
                     #prepare_code
                     let #z_attr = <Scalar as ff::Field>::random(&mut *rng);
@@ -1322,7 +1304,7 @@ fn protocol_macro(
             }
 
             if spec == ShowSpec::Reveal {
-                request_fields.push_scalar(&scoped_attr.to_string());
+                request_fields.push_scalar(&scoped_attr);
                 prepare_code = quote! {
                     #prepare_code
                     let #scoped_attr =
