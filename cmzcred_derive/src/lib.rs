@@ -16,6 +16,7 @@ the CMZCredential trait for the declared credential.
 
 use darling::FromDeriveInput;
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote, ToTokens};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream, Result};
@@ -555,10 +556,7 @@ fn protocol_macro(
     let mut cli_proof_cind_points = Vec::<Ident>::default();
     let mut cli_proof_pub_points = Vec::<Ident>::default();
     let mut cli_proof_const_points = Vec::<Ident>::default();
-    // Use quote! {} to enforce the correct type for
-    // iss_proof_statements, but then drop that entry
-    let mut cli_proof_statements = vec![quote! {}];
-    cli_proof_statements.clear();
+    let mut cli_proof_statements = Vec::<TokenStream2>::default();
     // A map from the credential name and attribute name (as Strings) to
     // the scoped attribute identifier.  This map is used to translate
     // expressions like `L.id` in the user-provided statements into the
@@ -572,10 +570,7 @@ fn protocol_macro(
     // The issuer has no cind_points
     let mut iss_proof_pub_points = Vec::<Ident>::default();
     let mut iss_proof_const_points = Vec::<Ident>::default();
-    // Use quote! {} to enforce the correct type for
-    // iss_proof_statements, but then drop that entry
-    let mut iss_proof_statements = vec![quote! {}];
-    iss_proof_statements.clear();
+    let mut iss_proof_statements = Vec::<TokenStream2>::default();
 
     /* Credential issuing
 
@@ -1258,7 +1253,7 @@ fn protocol_macro(
     }
 
     // Validity proofs for shown credentials with valid_optional go here
-    let mut validity_proofs: HashMap<String, TokenStream> = HashMap::new();
+    let mut validity_proofs: HashMap<String, TokenStream2> = HashMap::new();
 
     for show_cred in proto_spec.show_creds.iter() {
         // The credential being shown
@@ -1463,7 +1458,7 @@ fn protocol_macro(
                 cred_str,
                 quote! {
                     #V_statement
-                }.into(),
+                },
             );
         } else {
             cli_proof_statements.push(quote! {
@@ -1637,9 +1632,14 @@ fn protocol_macro(
     // modified into the corresponding scoped attribute.  These names
     // are stored in the idmap with an empty string for the credential
     // name.
+    //
+    // The expression "valid(A)" for a shown credential A with
+    // valid_optional set expands to the proof of validity for that
+    // credential.
 
     struct StatementScoper<'a> {
         idmap: &'a HashMap<(String, String), Ident>,
+        validity_proofs: &'a HashMap<String, TokenStream2>,
     }
 
     impl<'a> VisitMut for StatementScoper<'a> {
@@ -1669,6 +1669,31 @@ fn protocol_macro(
                 }
             }
 
+            if let Expr::Call(excall) = node {
+                let base = *excall.func.clone();
+                if let Expr::Path(basepath) = base {
+                    if let Some(id) = basepath.path.get_ident() {
+                        if id.to_string() == "valid" && excall.args.len() == 1 {
+                            let mut validity_statement = quote! {};
+                            let argexpr = excall.args.first().unwrap();
+                            if let Expr::Path(argpath) = argexpr {
+                                if let Some(credid) = argpath.path.get_ident() {
+                                    let credstr = credid.to_string();
+                                    match self.validity_proofs.get(&credstr) {
+                                        Some(tokens) => {
+                                            validity_statement = tokens.clone();
+                                        },
+                                        None => panic!("{} is not a shown credential with optional validity proof", credstr),
+                                    }
+                                }
+                            }
+                            *node = parse_quote! { #validity_statement };
+                            return;
+                        }
+                    }
+                }
+            }
+
             // Unless we bailed out above, continue with the default
             // traversal
             visit_mut::visit_expr_mut(self, node);
@@ -1677,6 +1702,7 @@ fn protocol_macro(
 
     let mut statement_scoper = StatementScoper {
         idmap: &cli_proof_idmap,
+        validity_proofs: &validity_proofs,
     };
     let mut cli_proof_scoped_statements = proto_spec.statements.clone();
     cli_proof_scoped_statements
