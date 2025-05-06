@@ -1257,6 +1257,9 @@ fn protocol_macro(
         };
     }
 
+    // Validity proofs for shown credentials with valid_optional go here
+    let mut validity_proofs: HashMap<String, TokenStream> = HashMap::new();
+
     for show_cred in proto_spec.show_creds.iter() {
         // The credential being shown
         let show_cred_id = format_ident!("show_cred_{}", show_cred.id);
@@ -1455,9 +1458,18 @@ fn protocol_macro(
             #V_cred += #q_cred * #P_cred;
         };
 
-        cli_proof_statements.push(quote! {
-            #V_statement,
-        });
+        if show_cred.valid_optional {
+            validity_proofs.insert(
+                cred_str,
+                quote! {
+                    #V_statement
+                }.into(),
+            );
+        } else {
+            cli_proof_statements.push(quote! {
+                #V_statement,
+            });
+        }
     }
     cli_proof_const_points.push(A_ident.clone());
     cli_proof_const_points.push(B_ident.clone());
