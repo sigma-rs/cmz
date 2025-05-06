@@ -190,7 +190,7 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
          attr1: H,
          attr2: R,
        },
-       B: Cred2 {
+       B?: Cred2 {
          attr3: H,
          attr4: I,
        } ],
@@ -219,6 +219,11 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
 
    Each credential specification is:
    - an identifier for the credential
+   - for a shown (not issued) credential, an optional "?".  If present,
+     the validity of this credential will _not_ be proved by default,
+     and must be explicit (perhaps in only some branches of an "OR"
+     statement) in the statements; if absent (the default), the validity
+     of the shown credential will always be proven
    - a type for the credential, previously defined with the CMZ! macro
    - a braced list of the attributes of the credential (as defined in
      the CMZ! macro), annotated with the attribute specification
@@ -320,15 +325,28 @@ impl<ShowOrIssue: Parse> Parse for AttrSpec<ShowOrIssue> {
 
 // A specification of a credential, either to be shown or issued
 #[derive(Debug)]
-struct CredSpec<ShowOrIssue: Parse> {
+struct CredSpec<ShowOrIssue: Parse, const VALID_OPTIONAL: bool> {
     id: Ident,
     cred_type: Ident,
+    // For shown credentials only (not issued credentials): set to true
+    // if we want to only optionally (for example, in an "OR" clause)
+    // show that this credential is valid.  The default state of false
+    // means we should always show that the credential is valid.
+    valid_optional: bool,
     attrs: HashMap<Ident, ShowOrIssue>,
 }
 
-impl<ShowOrIssue: Parse + Copy> Parse for CredSpec<ShowOrIssue> {
+impl<ShowOrIssue: Parse + Copy, const VALID_OPTIONAL: bool> Parse
+    for CredSpec<ShowOrIssue, VALID_OPTIONAL>
+{
     fn parse(input: ParseStream) -> Result<Self> {
         let id: Ident = input.parse()?;
+        let valid_optional = if VALID_OPTIONAL && input.peek(Token![?]) {
+            input.parse::<Token![?]>()?;
+            true
+        } else {
+            false
+        };
         input.parse::<Token![:]>()?;
         let cred_type: Ident = input.parse()?;
         let content;
@@ -342,6 +360,7 @@ impl<ShowOrIssue: Parse + Copy> Parse for CredSpec<ShowOrIssue> {
         Ok(Self {
             id,
             cred_type,
+            valid_optional,
             attrs,
         })
     }
@@ -351,21 +370,25 @@ impl<ShowOrIssue: Parse + Copy> Parse for CredSpec<ShowOrIssue> {
 // credential specification, or a bracketed list of credential
 // specifications.  We need a newtype here and not just a Vec so that we
 // can implement the Parse trait for it.
-struct CredSpecVec<ShowOrIssue: Parse>(Vec<CredSpec<ShowOrIssue>>);
+struct CredSpecVec<ShowOrIssue: Parse, const VALID_OPTIONAL: bool>(
+    Vec<CredSpec<ShowOrIssue, VALID_OPTIONAL>>,
+);
 
-impl<ShowOrIssue: Parse + Copy> Parse for CredSpecVec<ShowOrIssue> {
+impl<ShowOrIssue: Parse + Copy, const VALID_OPTIONAL: bool> Parse
+    for CredSpecVec<ShowOrIssue, VALID_OPTIONAL>
+{
     fn parse(input: ParseStream) -> Result<Self> {
-        let specvec: Vec<CredSpec<ShowOrIssue>> = if input.peek(Token![,]) {
+        let specvec: Vec<CredSpec<ShowOrIssue, VALID_OPTIONAL>> = if input.peek(Token![,]) {
             // The list is empty
             Vec::new()
         } else if input.peek(token::Bracket) {
             let content;
             bracketed!(content in input);
-            let specs: Punctuated<CredSpec<ShowOrIssue>, Token![,]> =
-                content.parse_terminated(CredSpec::<ShowOrIssue>::parse, Token![,])?;
+            let specs: Punctuated<CredSpec<ShowOrIssue, VALID_OPTIONAL>, Token![,]> = content
+                .parse_terminated(CredSpec::<ShowOrIssue, VALID_OPTIONAL>::parse, Token![,])?;
             specs.into_iter().collect()
         } else {
-            let spec: CredSpec<ShowOrIssue> = input.parse()?;
+            let spec: CredSpec<ShowOrIssue, VALID_OPTIONAL> = input.parse()?;
             vec![spec]
         };
 
@@ -378,8 +401,8 @@ impl<ShowOrIssue: Parse + Copy> Parse for CredSpecVec<ShowOrIssue> {
 struct ProtoSpec {
     proto_name: Ident,
     params: Vec<Ident>,
-    show_creds: Vec<CredSpec<ShowSpec>>,
-    issue_creds: Vec<CredSpec<IssueSpec>>,
+    show_creds: Vec<CredSpec<ShowSpec, true>>,
+    issue_creds: Vec<CredSpec<IssueSpec, false>>,
     statements: Vec<Expr>,
 }
 
@@ -406,9 +429,9 @@ impl Parse for ProtoSpec {
             input.parse::<Token![>]>()?;
         }
         input.parse::<Token![,]>()?;
-        let showvec: CredSpecVec<ShowSpec> = input.parse()?;
+        let showvec: CredSpecVec<ShowSpec, true> = input.parse()?;
         input.parse::<Token![,]>()?;
-        let issuevec: CredSpecVec<IssueSpec> = input.parse()?;
+        let issuevec: CredSpecVec<IssueSpec, false> = input.parse()?;
         input.parse::<Token![,]>()?;
         let statementpunc: Punctuated<Expr, Token![,]> =
             input.parse_terminated(Expr::parse, Token![,])?;
