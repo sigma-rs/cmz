@@ -356,6 +356,11 @@ where
     /// the private key and the issuer will typically not have the
     /// complete credential.
     fn verify_MAC(&self, privkey: &CMZPrivkey<Self::Point>) -> Result<(), ()>;
+
+    /// Create a fake MAC for this credential.  This is useful, for
+    /// example, when you're doing an OR proof, and in some arms of the
+    /// disjunction, the credential does not have to be valid.
+    fn fake_MAC(&mut self, rng: &mut impl RngCore);
 }
 
 /// The CMZ macro for declaring CMZ credentials.

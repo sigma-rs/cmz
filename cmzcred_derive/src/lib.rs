@@ -151,12 +151,18 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                     let attr_val = self.attr(field).ok_or(())?;
                     coeff += attr_val * privkey.x[Self::attr_num(field)];
                 }
-                if coeff * self.MAC.P == self.MAC.Q {
+                if !bool::from(self.MAC.P.is_identity()) && coeff * self.MAC.P == self.MAC.Q {
                     Ok(())
                 } else {
                     Err(())
                 }
             }
+
+            fn fake_MAC(&mut self, rng: &mut impl RngCore) {
+                self.MAC.P = <Self::Point as group::Group>::random(&mut *rng);
+                self.MAC.Q = <Self::Point as group::Group>::random(&mut *rng);
+            }
+
         }
     };
     gen.into()
@@ -1319,6 +1325,9 @@ fn protocol_macro(
         handle_code_post_fill = quote! {
             #handle_code_post_fill
             let #P_cred = request.#P_cred;
+            if bool::from(#P_cred.is_identity()) {
+                return Err(CMZError::CliProofFailed);
+            }
         };
         request_fields.push_point(&P_cred);
         request_fields.push_point(&CQ_cred);
