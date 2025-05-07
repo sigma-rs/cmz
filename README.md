@@ -97,10 +97,10 @@ also unknown to the issuer, so that the issuer cannot track clients from
 transaction to transaction.  Items for purchase are represented by
 credentials that anyone can download from the issuer's website.
 
-The primary way to create a protocol is with the `CMZProtocol!` macro.
+The primary way to create a protocol is with the `muCMZProtocol!` macro.
 
 ```rust
-    CMZProtocol! { wallet_spend,
+    muCMZProtocol! { wallet_spend,
       [ W: Wallet { randid: R, balance: H },
         I: Item { serialno: H, price: H } ],
       N: Wallet { randid: J, balance: H },
@@ -247,7 +247,7 @@ attributes.  It is the job of the `fill_creds` callback to:
 
 The `handle` function will then check that the credentials shown by the
 client are all valid, and that the statements given in the
-`CMZProtocol!` macro call are all true.  If not, it will return with an
+`muCMZProtocol!` macro call are all true.  If not, it will return with an
 `Err`.  If so, `handle` will call the `authorize` callback, which can do
 any final application-specific checks on the credentials (and any other
 state it can access in its closure).  If `authorize` returns `Err`, so
@@ -281,17 +281,17 @@ or if as in this case, there's just one, as a single element.
 
 A protocol can optionally be declared as having _parameters_, which are
 public Scalar constants that will be filled in at runtime.  You declare
-parameters by changing the first line of the `CMZProtocol!` macro
+parameters by changing the first line of the `muCMZProtocol!` macro
 invocation from, for example:
 
 ```rust
-    CMZProtocol! { proto_name,
+    muCMZProtocol! { proto_name,
 ```
 
 to:
 
 ```rust
-    CMZProtocol! { proto_name<param1, param2>,
+    muCMZProtocol! { proto_name<param1, param2>,
 ```
 
 then you can use `param1` and `param2` wherever you could have used a
@@ -299,7 +299,7 @@ literal Scalar constant in the statements in the statement list.  For
 example:
 
 ```rust
-    CMZProtocol! { wallet_spend<fee>,
+    muCMZProtocol! { wallet_spend<fee>,
       [ W: Wallet { randid: R, balance: H },
         I: Item { serialno: H, price: H } ],
       N: Wallet { randid: J, balance: H },

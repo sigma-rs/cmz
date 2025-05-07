@@ -1,4 +1,4 @@
-// We want the macros like CMZProtocol to be camel case
+// We want the macros like CMZ14Protocol to be camel case
 #![allow(non_snake_case)]
 
 /*! The implementation of the CMZCred derive.
@@ -192,7 +192,7 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
 
    The format is:
 
-   let proto = CMZProtocol! { proto_name<param1,param2>,
+   let proto = muCMZProtocol! { proto_name<param1,param2>,
      [ A: Cred {
          attr1: H,
          attr2: R,
@@ -2038,7 +2038,7 @@ fn protocol_macro(
 }
 
 /** There are six variants of the `CMZProtocol` macro.  The ones starting
-  with "CMZ" create protocol implementations using the original CMZ14
+  with "CMZ14" create protocol implementations using the original CMZ14
   issuing protocol.  The ones starting with "muCMZ" using the more
   efficient µCMZ protocol.  The ones with "Cli" only create the code
   for the client side of the protocol.  The ones with "Iss" only create
@@ -2046,17 +2046,17 @@ fn protocol_macro(
   either create the code for both sides of the protocol.)
 */
 #[proc_macro]
-pub fn CMZProtocol(input: TokenStream) -> TokenStream {
+pub fn CMZ14Protocol(input: TokenStream) -> TokenStream {
     protocol_macro(input, false, true, true)
 }
 
 #[proc_macro]
-pub fn CMZCliProtocol(input: TokenStream) -> TokenStream {
+pub fn CMZ14CliProtocol(input: TokenStream) -> TokenStream {
     protocol_macro(input, false, true, false)
 }
 
 #[proc_macro]
-pub fn CMZIssProtocol(input: TokenStream) -> TokenStream {
+pub fn CMZ14IssProtocol(input: TokenStream) -> TokenStream {
     protocol_macro(input, false, false, true)
 }
 

@@ -10,7 +10,7 @@ CMZ! { Basic<RistrettoPoint> :
     attr2
 }
 
-CMZProtocol! { basic_proto,
+CMZ14Protocol! { basic_proto,
 A: Basic {
     attr1: H,
     attr2: H,
