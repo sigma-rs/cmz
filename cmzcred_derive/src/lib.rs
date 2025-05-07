@@ -631,6 +631,7 @@ fn protocol_macro(
         #finalize_code
         let #A_ident = bp.A();
     };
+    iss_proof_const_points.push(A_ident.clone());
 
     if !use_muCMZ || proto_spec.issue_creds.len() > 0 {
         prepare_code = quote! {
@@ -645,6 +646,7 @@ fn protocol_macro(
             #finalize_code
             let #B_ident = bp.B();
         };
+        iss_proof_const_points.push(B_ident.clone());
     }
 
     for iss_cred in proto_spec.issue_creds.iter() {
@@ -842,19 +844,31 @@ fn protocol_macro(
                     #eq1_statement + #t_attr * #enc1_attr
                 };
                 cli_proof_priv_scalars.push(scoped_attr.clone());
+                cli_proof_rand_scalars.push(r_attr.clone());
+                cli_proof_pub_points.push(enc0_attr.clone());
+                cli_proof_pub_points.push(enc1_attr.clone());
+                cli_proof_statements.push(quote! {
+                    #enc0_attr = #r_attr * #B_ident,
+                    #enc1_attr = #scoped_attr * #B_ident + #r_attr * #D_ident,
+                });
                 prepare_code = quote! {
                     #prepare_code
                     let #r_attr = <Scalar as ff::Field>::random(&mut *rng);
-                    let #enc_attr = (bp.mulB(&#r_attr),
-                        bp.mulB(&#scoped_attr) +
-                        #r_attr * #D_ident);
+                    let #enc0_attr = bp.mulB(&#r_attr);
+                    let #enc1_attr = bp.mulB(&#scoped_attr) +
+                        #r_attr * #D_ident;
+                    let #enc_attr = (#enc0_attr, #enc1_attr);
+                };
+                handle_code_post_fill = quote! {
+                    #handle_code_post_fill
+
+                    let #enc0_attr = request.#enc_attr.0;
+                    let #enc1_attr = request.#enc_attr.1;
                 };
                 handle_code_post_auth = quote! {
                     #handle_code_post_auth
 
                     let #t_attr = #b_cred * #x_attr;
-                    let #enc0_attr = request.#enc_attr.0;
-                    let #enc1_attr = request.#enc_attr.1;
                     #EQ_cred.0 += #t_attr * #enc0_attr;
                     #EQ_cred.1 += #t_attr * #enc1_attr;
                     let #T_attr = bp.mulA(&#t_attr);
@@ -1031,7 +1045,6 @@ fn protocol_macro(
             let EQ_cred_code_pre = if cred_hide_joint {
                 quote! {
                     let #s_cred = <Scalar as ff::Field>::random(&mut *rng);
-                    let #D_ident = request.#D_ident;
                     let mut #EQ_cred = (bp.mulB(&#s_cred), #s_cred * #D_ident);
                 }
             } else {
@@ -1194,8 +1207,6 @@ fn protocol_macro(
                 #R_cred = #x0_cred * #P_cred + #b_cred * #K_cred,
             });
         }
-        iss_proof_const_points.push(A_ident.clone());
-        iss_proof_const_points.push(B_ident.clone());
 
         any_hide_joint |= cred_hide_joint;
     }
@@ -1207,10 +1218,19 @@ fn protocol_macro(
     if any_hide_joint && !use_muCMZ {
         clientstate_fields.push_scalar(&d_ident);
         clientstate_fields.push_point(&D_ident);
+        cli_proof_rand_scalars.push(d_ident.clone());
+        cli_proof_pub_points.push(D_ident.clone());
         request_fields.push_point(&D_ident);
+        cli_proof_statements.push(quote! {
+            #D_ident = #d_ident * #B_ident,
+        });
         prepare_code = quote! {
             let (#d_ident,#D_ident) = bp.keypairB(&mut *rng);
             #prepare_code
+        };
+        handle_code_post_fill = quote! {
+            let #D_ident = request.#D_ident;
+            #handle_code_post_fill
         };
         finalize_code = quote! {
             #finalize_code
