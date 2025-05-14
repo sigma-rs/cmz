@@ -34,7 +34,7 @@ pub mod submod {
             b"CMZ Generator A",
         ));
 
-        let (privkey, pubkey) = Basic::cmz_gen_keys(&mut rng);
+        let (privkey, pubkey) = Basic::cmz14_gen_keys(&mut rng);
 
         let mut basic_iss = Basic::using_pubkey(&pubkey);
 

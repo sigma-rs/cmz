@@ -23,7 +23,7 @@ fn test_basic() {
         b"CMZ Generator A",
     ));
 
-    let (privkey, pubkey) = Basic::cmz_gen_keys(&mut rng);
+    let (privkey, pubkey) = Basic::cmz14_gen_keys(&mut rng);
 
     // Serialize and deserialize
     let privkey_bytes = bincode::serialize(&privkey).unwrap();

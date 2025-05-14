@@ -205,7 +205,7 @@ macro_rules! protos_def {
 }
 
 protos_def! {CMZ14Protocol, cmz14_wallet_issue, cmz14_item_issue, cmz14_wallet_spend,
-cmz14_wallet_spend_with_fee, cmz_gen_keys, test_cmz14_wallet}
+cmz14_wallet_spend_with_fee, cmz14_gen_keys, test_cmz14_wallet}
 
 protos_def! {muCMZProtocol, mu_wallet_issue, mu_item_issue,
 mu_wallet_spend, mu_wallet_spend_with_fee, mucmz_gen_keys, test_mucmz_wallet}

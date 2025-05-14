@@ -335,7 +335,7 @@ where
     ) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>);
 
     /// Convenience functions for the above
-    fn cmz_gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>) {
+    fn cmz14_gen_keys(rng: &mut impl RngCore) -> (CMZPrivkey<Self::Point>, CMZPubkey<Self::Point>) {
         Self::gen_keys(rng, false)
     }
 
