@@ -307,7 +307,7 @@ where
     /// Get a copy of the public key for this credential.  If the public
     /// key has not yet been set or computed, a pubkey with X0 == None
     /// will be returned.
-    fn get_pubkey(&self) -> CMZPubkey<Self::Point>;
+    fn get_pubkey<'a>(&'a self) -> &'a CMZPubkey<Self::Point>;
 
     /// Set the private key for this credential.  The public key will
     /// automatically be computed from the private key.
@@ -316,7 +316,15 @@ where
     /// Get a copy of the private key for this credential.  If the
     /// private key has not yet been set, a privkey with an empty x
     /// vector will be returned.
-    fn get_privkey(&self) -> CMZPrivkey<Self::Point>;
+    fn get_privkey<'a>(&'a self) -> &'a CMZPrivkey<Self::Point>;
+
+    /// Get the element of the privkey x vector associated with the
+    /// given field name
+    fn privkey_x(&self, name: &str) -> Self::Scalar;
+
+    /// Get the element of the pubkey X vector associated with the given
+    /// field name
+    fn pubkey_X(&self, name: &str) -> Self::Point;
 
     /// Generate random private and public keys for this credential
     /// type.  muCMZ should be true if this credential will be issued

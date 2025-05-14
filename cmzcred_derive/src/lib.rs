@@ -107,8 +107,8 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                 self
             }
 
-            fn get_pubkey(&self) -> CMZPubkey<Self::Point> {
-                self.pubkey.clone()
+            fn get_pubkey<'a> (&'a self) -> &'a CMZPubkey<Self::Point> {
+                &self.pubkey
             }
 
             fn set_privkey(&mut self, privkey: &CMZPrivkey<Self::Point>) -> &mut Self {
@@ -117,8 +117,16 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                 self
             }
 
-            fn get_privkey(&self) -> CMZPrivkey<Self::Point> {
-                self.privkey.clone()
+            fn get_privkey<'a> (&'a self) -> &'a CMZPrivkey<Self::Point> {
+                &self.privkey
+            }
+
+            fn privkey_x(&self, name: &str) -> Self::Scalar {
+                self.privkey.x[Self::attr_num(name)]
+            }
+
+            fn pubkey_X(&self, name: &str) -> Self::Point {
+                self.pubkey.X[Self::attr_num(name)]
             }
 
             fn gen_keys(rng: &mut impl RngCore, muCMZ: bool) ->
@@ -694,10 +702,10 @@ fn protocol_macro(
         // µCMZ)
         handle_code_post_fill = quote! {
             #handle_code_post_fill
-            if #iss_cred_id.privkey.x.len() != #iss_cred_type::num_attrs() {
+            if #iss_cred_id.get_privkey().x.len() != #iss_cred_type::num_attrs() {
                 return Err(CMZError::PrivkeyMissing(#cred_str));
             }
-            if #iss_cred_id.privkey.muCMZ != #use_muCMZ {
+            if #iss_cred_id.get_privkey().muCMZ != #use_muCMZ {
                 return Err(CMZError::WrongProtocol(#cred_str));
             }
         };
@@ -706,10 +714,10 @@ fn protocol_macro(
         // key set and that it's for the right protocol (CMZ14 or µCMZ)
         prepare_code = quote! {
             #prepare_code
-            if #iss_cred_id.pubkey.X.len() != #iss_cred_type::num_attrs() {
+            if #iss_cred_id.get_pubkey().X.len() != #iss_cred_type::num_attrs() {
                 return Err(CMZError::PubkeyMissing(#cred_str));
             }
-            if #iss_cred_id.pubkey.Xr.is_some() != #use_muCMZ {
+            if #iss_cred_id.get_pubkey().Xr.is_some() != #use_muCMZ {
                 return Err(CMZError::WrongProtocol(#cred_str));
             }
         };
@@ -719,11 +727,11 @@ fn protocol_macro(
         clientstate_fields.push_pubkey(&pubkey_cred);
         prepare_code = quote! {
             #prepare_code
-            let #pubkey_cred = #iss_cred_id.pubkey;
+            let #pubkey_cred = #iss_cred_id.get_pubkey().clone();
         };
         finalize_code = quote! {
             #finalize_code
-            #iss_cred_id.pubkey = self.#pubkey_cred.clone();
+            #iss_cred_id.set_pubkey(&self.#pubkey_cred);
         };
 
         for (attr, &spec) in iss_cred.attrs.iter() {
@@ -754,12 +762,12 @@ fn protocol_macro(
                 // public key
                 handle_code_post_auth = quote! {
                     #handle_code_post_auth
-                    let #x_attr = #iss_cred_id.privkey.x[#iss_cred_type::attr_num(#attr_str)];
-                    let #X_attr = #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)];
+                    let #x_attr = #iss_cred_id.privkey_x(#attr_str);
+                    let #X_attr = #iss_cred_id.pubkey_X(#attr_str);
                 };
                 finalize_code = quote! {
                     #finalize_code
-                    let #X_attr = #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)];
+                    let #X_attr = #iss_cred_id.pubkey_X(#attr_str);
                 };
                 iss_proof_priv_scalars.push(x_attr.clone());
                 iss_proof_pub_points.push(X_attr.clone());
@@ -892,7 +900,7 @@ fn protocol_macro(
                 };
                 handle_code_post_fill = quote! {
                     #handle_code_post_fill
-                    let #X_attr = #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)];
+                    let #X_attr = #iss_cred_id.pubkey_X(#attr_str);
                 };
                 C_statement = quote! {
                     #C_statement + #scoped_attr * #X_attr
@@ -980,7 +988,7 @@ fn protocol_macro(
                     handle_code_post_fill = quote! {
                         #handle_code_post_fill
                         #K_cred += (#scoped_attr *
-                            #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)]);
+                            #iss_cred_id.pubkey_X(#attr_str));
                     };
                     // For a Joint attribute, we only want to use the
                     // issuer's contribution (which is in #scoped_attr),
@@ -994,7 +1002,7 @@ fn protocol_macro(
                     finalize_code = quote! {
                         #finalize_code
                         #K_cred += (#use_attr *
-                            #iss_cred_id.pubkey.X[#iss_cred_type::attr_num(#attr_str)]);
+                            #iss_cred_id.pubkey_X(#attr_str));
                     };
                 } else {
                     /* For each Reveal, Implicit, Set, or Joint attribute, add
@@ -1070,10 +1078,10 @@ fn protocol_macro(
             handle_code_post_auth = quote! {
                 let #b_cred = <Scalar as ff::Field>::random(&mut *rng);
                 let #P_cred = bp.mulB(&#b_cred);
-                let #x0_cred = #iss_cred_id.privkey.x0;
-                let #xr_cred = #iss_cred_id.privkey.xr;
-                let #X0_cred = #iss_cred_id.pubkey.X0.unwrap();
-                let mut #Q_cred = bp.mulB(&(#b_cred * #iss_cred_id.privkey.x0));
+                let #x0_cred = #iss_cred_id.get_privkey().x0;
+                let #xr_cred = #iss_cred_id.get_privkey().xr;
+                let #X0_cred = #iss_cred_id.get_pubkey().X0.unwrap();
+                let mut #Q_cred = bp.mulB(&(#b_cred * #iss_cred_id.get_privkey().x0));
                 #EQ_cred_code_pre
 
                 #handle_code_post_auth
@@ -1094,7 +1102,7 @@ fn protocol_macro(
             finalize_code = quote! {
                 #finalize_code
                 let #P_cred = reply.#P_cred;
-                let #X0_cred = #iss_cred_id.pubkey.X0.unwrap();
+                let #X0_cred = #iss_cred_id.get_pubkey().X0.unwrap();
                 #iss_cred_id.MAC.P = #P_cred;
                 #finalize_Q_code
             };
@@ -1148,7 +1156,7 @@ fn protocol_macro(
                 };
                 handle_code_post_fill = quote! {
                     let #C_cred = request.#C_cred;
-                    let mut #K_cred = #C_cred + #iss_cred_id.pubkey.Xr.unwrap();
+                    let mut #K_cred = #C_cred + #iss_cred_id.get_pubkey().Xr.unwrap();
                     #handle_code_post_fill
                 };
                 finalize_code = quote! {
@@ -1161,7 +1169,7 @@ fn protocol_macro(
                 });
             } else {
                 handle_code_post_fill = quote! {
-                    let mut #K_cred = #iss_cred_id.pubkey.Xr.unwrap();
+                    let mut #K_cred = #iss_cred_id.get_pubkey().Xr.unwrap();
                     #handle_code_post_fill
                 };
                 finalize_code = quote! {
@@ -1173,8 +1181,8 @@ fn protocol_macro(
                 #handle_code_post_auth
                 let #b_cred = <Scalar as ff::Field>::random(&mut *rng);
                 let #P_cred = bp.mulA(&#b_cred);
-                let #x0_cred = #iss_cred_id.privkey.x0;
-                let #X0_cred = #iss_cred_id.pubkey.X0.unwrap();
+                let #x0_cred = #iss_cred_id.get_privkey().x0;
+                let #X0_cred = #iss_cred_id.get_pubkey().X0.unwrap();
                 let #R_cred = #b_cred * (bp.mulA(&#x0_cred) + #K_cred);
             };
             let finalize_Q_code = if cred_hide_joint {
@@ -1189,7 +1197,7 @@ fn protocol_macro(
             finalize_code = quote! {
                 #finalize_code
                 let #P_cred = reply.#P_cred;
-                let #X0_cred = #iss_cred_id.pubkey.X0.unwrap();
+                let #X0_cred = #iss_cred_id.get_pubkey().X0.unwrap();
                 let #R_cred = reply.#R_cred;
                 #iss_cred_id.MAC.P = #P_cred;
                 #finalize_Q_code
@@ -1309,10 +1317,10 @@ fn protocol_macro(
         // µCMZ)
         handle_code_post_fill = quote! {
             #handle_code_post_fill
-            if #show_cred_id.privkey.x.len() != #show_cred_type::num_attrs() {
+            if #show_cred_id.get_privkey().x.len() != #show_cred_type::num_attrs() {
                 return Err(CMZError::PrivkeyMissing(#cred_str));
             }
-            if #show_cred_id.privkey.muCMZ != #use_muCMZ {
+            if #show_cred_id.get_privkey().muCMZ != #use_muCMZ {
                 return Err(CMZError::WrongProtocol(#cred_str));
             }
         };
@@ -1321,10 +1329,10 @@ fn protocol_macro(
         // key set and that it's for the right protocol (CMZ14 or µCMZ)
         prepare_code = quote! {
             #prepare_code
-            if #show_cred_id.pubkey.X.len() != #show_cred_type::num_attrs() {
+            if #show_cred_id.get_pubkey().X.len() != #show_cred_type::num_attrs() {
                 return Err(CMZError::PubkeyMissing(#cred_str));
             }
-            if #show_cred_id.pubkey.Xr.is_some() != #use_muCMZ {
+            if #show_cred_id.get_pubkey().Xr.is_some() != #use_muCMZ {
                 return Err(CMZError::WrongProtocol(#cred_str));
             }
         };
@@ -1366,9 +1374,9 @@ fn protocol_macro(
 
         // µCMZ has the extra xr to add in here
         let q_init = if use_muCMZ {
-            quote! { #show_cred_id.privkey.x0 + #show_cred_id.privkey.xr }
+            quote! { #show_cred_id.get_privkey().x0 + #show_cred_id.get_privkey().xr }
         } else {
-            quote! { #show_cred_id.privkey.x0 }
+            quote! { #show_cred_id.get_privkey().x0 }
         };
         handle_code_post_fill = quote! {
             #handle_code_post_fill
@@ -1409,14 +1417,14 @@ fn protocol_macro(
                     #prepare_code
                     let #z_attr = <Scalar as ff::Field>::random(&mut *rng);
                     let #C_attr = #scoped_attr * #P_cred + bp.mulA(&#z_attr);
-                    let #X_attr = #show_cred_id.pubkey.X[#show_cred_type::attr_num(#attr_str)];
+                    let #X_attr = #show_cred_id.pubkey_X(#attr_str);
                     #V_cred += #z_attr * #X_attr;
                 };
                 handle_code_post_fill = quote! {
                     #handle_code_post_fill
                     let #C_attr = request.#C_attr;
-                    let #X_attr = #show_cred_id.pubkey.X[#show_cred_type::attr_num(#attr_str)];
-                    #V_cred += #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)]
+                    let #X_attr = #show_cred_id.pubkey_X(#attr_str);
+                    #V_cred += #show_cred_id.privkey_x(#attr_str)
                         * #C_attr;
                 };
                 cli_proof_priv_scalars.push(scoped_attr.clone());
@@ -1449,7 +1457,7 @@ fn protocol_macro(
                 handle_code_post_fill = quote! {
                     #handle_code_post_fill
                     #q_cred += #scoped_attr *
-                        #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)];
+                        #show_cred_id.privkey_x(#attr_str);
                 };
             }
 
@@ -1471,7 +1479,7 @@ fn protocol_macro(
                 handle_code_post_fill = quote! {
                     #handle_code_post_fill
                     #q_cred += #scoped_attr *
-                        #show_cred_id.privkey.x[#show_cred_type::attr_num(#attr_str)];
+                        #show_cred_id.privkey_x(#attr_str);
                 };
             }
         }

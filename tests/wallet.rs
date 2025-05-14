@@ -28,20 +28,20 @@ macro_rules! protos_def {
         }
 
         $proto_macro! { $wallet_spend,
-          [ W: Wallet { randid: R, balance: H },
-            I: Item { serialno: H, price: H } ],
-          N: Wallet { randid: J, balance: H },
-//          N.balance >= 0,
-          W.balance = N.balance + I.price
-        }
+                  [ W: Wallet { randid: R, balance: H },
+                    I: Item { serialno: H, price: H } ],
+                  N: Wallet { randid: J, balance: H },
+        //          N.balance >= 0,
+                  W.balance = N.balance + I.price
+                }
 
         $proto_macro! { $wallet_spend_with_fee<fee>,
-          [ W: Wallet { randid: R, balance: H },
-            I: Item { serialno: H, price: H } ],
-          N: Wallet { randid: J, balance: H },
- //         N.balance >= 0,
-          W.balance = N.balance + I.price + fee
-        }
+                 [ W: Wallet { randid: R, balance: H },
+                   I: Item { serialno: H, price: H } ],
+                 N: Wallet { randid: J, balance: H },
+        //         N.balance >= 0,
+                 W.balance = N.balance + I.price + fee
+               }
 
         #[test]
         fn $test_wallet() -> Result<(), CMZError> {
