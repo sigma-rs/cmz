@@ -1459,6 +1459,7 @@ fn protocol_macro(
                     #q_cred += #scoped_attr *
                         #show_cred_id.privkey_x(#attr_str);
                 };
+                cli_proof_pub_scalars.push(scoped_attr.clone());
             }
 
             if spec == ShowSpec::Implicit {
@@ -1481,6 +1482,7 @@ fn protocol_macro(
                     #q_cred += #scoped_attr *
                         #show_cred_id.privkey_x(#attr_str);
                 };
+                cli_proof_pub_scalars.push(scoped_attr.clone());
             }
         }
         // Compute the computation of the issuer's version of the
