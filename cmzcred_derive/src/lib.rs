@@ -1752,12 +1752,12 @@ fn protocol_macro(
     let cli_proof = {
         quote! {
             sigma_compiler! { client_proof<Point>,
-                (#(#cli_proof_rand_scalars),*),
-                (#(#cli_proof_priv_scalars),*),
-                (#(#cli_proof_pub_scalars),*),
-                (#(#cli_proof_cind_points),*),
-                (#(#cli_proof_pub_points),*),
-                (#(#cli_proof_const_points),*),
+                (#(rand #cli_proof_rand_scalars,)*
+                 #(#cli_proof_priv_scalars,)*
+                 #(pub #cli_proof_pub_scalars,)*),
+                (#(cind #cli_proof_cind_points,)*
+                 #(#cli_proof_pub_points,)*
+                 #(cind const #cli_proof_const_points,)*),
                 #(#cli_proof_scoped_statements,)*
                 #(#cli_proof_statements)*
             }
@@ -1769,12 +1769,12 @@ fn protocol_macro(
     let iss_proof = {
         quote! {
             sigma_compiler! { issuer_proof<Point>,
-                (#(#iss_proof_rand_scalars),*),
-                (#(#iss_proof_priv_scalars),*),
-                (#(#iss_proof_pub_scalars),*),
-                (), // cind_points
-                (#(#iss_proof_pub_points),*),
-                (#(#iss_proof_const_points),*),
+                (#(rand #iss_proof_rand_scalars,)*
+                 #(#iss_proof_priv_scalars,)*
+                 #(pub #iss_proof_pub_scalars,)*),
+                // no cind_points
+                (#(#iss_proof_pub_points,)*
+                 #(cind const #iss_proof_const_points,)*),
                 #(#iss_proof_statements)*
             }
         }
