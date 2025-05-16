@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 cmzcred_derive = { path = "cmzcred_derive" }
-curve25519-dalek = { version = "4", features = [ "group", "rand_core", "digest" ] }
 ff = "0.13"
 generic_static = "0.2"
 group = "0.13"
@@ -20,5 +19,6 @@ thiserror = "2"
 
 [dev-dependencies]
 bincode = "1"
+curve25519-dalek = { version = "4", features = [ "group", "rand_core", "digest" ] }
 rand = "0.8"
 sha2 = "0.10"
