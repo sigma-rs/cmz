@@ -54,7 +54,7 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
         };
         let id_str = ident.to_string();
         if let Visibility::Public(_) = n.vis {
-            if id_str != String::from("MAC") {
+            if id_str != *"MAC" {
                 attrs.push(id_str);
                 idents.push(ident);
             }
@@ -494,7 +494,7 @@ impl StructFieldList {
         self.fields.push(StructField::ByteVec(s.clone()));
     }
     /// Output an iterator consisting of the field names
-    pub fn field_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
+    pub fn field_iter(&self) -> impl Iterator<Item = &Ident> {
         self.fields.iter().map(|f| match f {
             StructField::Scalar(id) => id,
             StructField::Point(id) => id,
@@ -543,17 +543,17 @@ fn protocol_macro(
     let proto_spec: ProtoSpec = parse_macro_input!(input as ProtoSpec);
 
     let proto_name = &proto_spec.proto_name;
-    let has_params = proto_spec.params.len() > 0;
+    let has_params = !proto_spec.params.is_empty();
     let tot_num_creds = proto_spec.show_creds.len() + proto_spec.issue_creds.len();
 
     // Use the group of the first named credential type
-    let group_types = if proto_spec.show_creds.len() > 0 {
+    let group_types = if !proto_spec.show_creds.is_empty() {
         let first_cred_type = &proto_spec.show_creds[0].cred_type;
         quote! {
             pub type Scalar = <#first_cred_type as CMZCredential>::Scalar;
             pub type Point = <#first_cred_type as CMZCredential>::Point;
         }
-    } else if proto_spec.issue_creds.len() > 0 {
+    } else if !proto_spec.issue_creds.is_empty() {
         let first_cred_type = &proto_spec.issue_creds[0].cred_type;
         quote! {
             pub type Scalar = <#first_cred_type as CMZCredential>::Scalar;
@@ -641,7 +641,7 @@ fn protocol_macro(
     };
     iss_proof_const_points.push(A_ident.clone());
 
-    if !use_muCMZ || proto_spec.issue_creds.len() > 0 {
+    if !use_muCMZ || !proto_spec.issue_creds.is_empty() {
         prepare_code = quote! {
             #prepare_code
             let #B_ident = bp.B();
@@ -1247,7 +1247,7 @@ fn protocol_macro(
         iss_proof_pub_points.push(D_ident.clone());
     }
 
-    if proto_spec.issue_creds.len() > 0 {
+    if !proto_spec.issue_creds.is_empty() {
         // The issuer will create a zero-knowledge proof
         let iss_proof_ident = format_ident!("iss_proof");
         reply_fields.push_bytevec(&iss_proof_ident);
@@ -1712,7 +1712,7 @@ fn protocol_macro(
                 let base = *excall.func.clone();
                 if let Expr::Path(basepath) = base {
                     if let Some(id) = basepath.path.get_ident() {
-                        if id.to_string() == "valid" && excall.args.len() == 1 {
+                        if *id == "valid" && excall.args.len() == 1 {
                             let mut validity_statement = quote! {};
                             let argexpr = excall.args.first().unwrap();
                             if let Expr::Path(argpath) = argexpr {
@@ -1848,12 +1848,10 @@ fn protocol_macro(
             }));
 
         // The return type
-        let rettype = if tot_num_creds > 1 {
-            quote! { Result<(Reply, (#(#cred_rettypes),*)),CMZError> }
-        } else if tot_num_creds == 1 {
-            quote! { Result<(Reply, #(#cred_rettypes)*),CMZError> }
-        } else {
-            quote! { Result<Reply,CMZError> }
+        let rettype = match tot_num_creds {
+            0 => quote! { Result<Reply,CMZError> },
+            1 => quote! { Result<(Reply, #(#cred_rettypes)*),CMZError> },
+            _ => quote! { Result<(Reply, (#(#cred_rettypes),*)),CMZError> },
         };
 
         // The return value
@@ -1936,12 +1934,10 @@ fn protocol_macro(
             }));
 
         let repf = reply_fields.field_iter();
-        let retval = if tot_num_creds > 1 {
-            quote! { Ok((Reply{#(#repf,)*}, (#(#cred_retvals),*))) }
-        } else if tot_num_creds == 1 {
-            quote! { Ok((Reply{#(#repf,)*}, #(#cred_retvals)*)) }
-        } else {
-            quote! { Ok(Reply{#(#repf,)*}) }
+        let retval = match tot_num_creds {
+            0 => quote! { Ok(Reply{#(#repf,)*}) },
+            1 => quote! { Ok((Reply{#(#repf,)*}, #(#cred_retvals)*)) },
+            _ => quote! { Ok((Reply{#(#repf,)*}, (#(#cred_retvals),*))) },
         };
 
         quote! {
@@ -1981,12 +1977,10 @@ fn protocol_macro(
             quote! { #cred_type }
         });
 
-        let rettype = if proto_spec.issue_creds.len() > 1 {
-            quote! { Result<(#(#cred_rettypes),*),(CMZError,Self)> }
-        } else if proto_spec.issue_creds.len() == 1 {
-            quote! { Result<#(#cred_rettypes)*,(CMZError,Self)> }
-        } else {
-            quote! { Result<(),(CMZError,Self)> }
+        let rettype = match proto_spec.issue_creds.len() {
+            0 => quote! { Result<(),(CMZError,Self)> },
+            1 => quote! { Result<#(#cred_rettypes)*,(CMZError,Self)> },
+            _ => quote! { Result<(#(#cred_rettypes),*),(CMZError,Self)> },
         };
 
         // Return value for ClientState's finalize function
@@ -1995,12 +1989,10 @@ fn protocol_macro(
             quote! { #id }
         });
 
-        let retval = if proto_spec.issue_creds.len() > 1 {
-            quote! { Ok((#(#cred_retvals),*)) }
-        } else if proto_spec.issue_creds.len() == 1 {
-            quote! { Ok(#(#cred_retvals)*) }
-        } else {
-            quote! { Ok(()) }
+        let retval = match proto_spec.issue_creds.len() {
+            0 => quote! { Ok(()) },
+            1 => quote! { Ok(#(#cred_retvals)*) },
+            _ => quote! { Ok((#(#cred_retvals),*)) },
         };
 
         quote! {
