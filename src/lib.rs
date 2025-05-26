@@ -359,6 +359,17 @@ where
         slf
     }
 
+    /// Create the MAC for this credential, given the private key.
+    fn create_MAC(
+        &mut self,
+        rng: &mut impl RngCore,
+        privkey: &CMZPrivkey<Self::Point>,
+    ) -> Result<(), ()>;
+
+    /// Compute the coefficient component of the MAC (the Scalar you
+    /// would multiply P by to get Q), given the private key.
+    fn compute_MAC_coeff(&self, privkey: &CMZPrivkey<Self::Point>) -> Result<Self::Scalar, ()>;
+
     /// Verify the MAC in this credential, given the private key.  This
     /// is mainly useful for debugging, since the client will not have
     /// the private key and the issuer will typically not have the

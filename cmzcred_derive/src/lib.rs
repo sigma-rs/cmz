@@ -146,8 +146,7 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                 (privkey, pubkey)
             }
 
-            fn verify_MAC(&self, privkey: &CMZPrivkey<Self::Point>) ->
-                    Result<(),()> {
+            fn compute_MAC_coeff(&self, privkey: &CMZPrivkey<Self::Point>) -> Result<Self::Scalar, ()> {
                 if privkey.x.len() != Self::num_attrs() {
                     return Err(());
                 }
@@ -159,6 +158,19 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                     let attr_val = self.attr(field).ok_or(())?;
                     coeff += attr_val * privkey.x[Self::attr_num(field)];
                 }
+                Ok(coeff)
+            }
+
+            fn create_MAC(&mut self, rng: &mut impl RngCore, privkey: &CMZPrivkey<Self::Point>) -> Result<(),()> {
+                let coeff = self.compute_MAC_coeff(privkey)?;
+                self.MAC.P = <Self::Point as group::Group>::random(&mut *rng);
+                self.MAC.Q = coeff * self.MAC.P;
+                Ok(())
+            }
+
+            fn verify_MAC(&self, privkey: &CMZPrivkey<Self::Point>) ->
+                    Result<(),()> {
+                let coeff = self.compute_MAC_coeff(privkey)?;
                 if !bool::from(self.MAC.P.is_identity()) && coeff * self.MAC.P == self.MAC.Q {
                     Ok(())
                 } else {
