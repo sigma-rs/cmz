@@ -1280,7 +1280,7 @@ fn protocol_macro(
             };
             // If prove returns Err here, there's an actual bug.
             let #iss_proof_ident = issuer_proof::prove(&iss_proof_params,
-                &iss_proof_witness).unwrap();
+                &iss_proof_witness, rng).unwrap();
         };
         let cli_iss_params_fields = iss_proof_pub_points
             .iter()
@@ -1555,7 +1555,7 @@ fn protocol_macro(
         };
         // If prove returns Err here, there's an actual bug.
         let #cli_proof_ident = client_proof::prove(&cli_proof_params,
-            &cli_proof_witness).unwrap();
+            &cli_proof_witness, rng).unwrap();
     };
     let iss_cli_params_fields = cli_proof_pub_points
         .iter()
@@ -1819,7 +1819,7 @@ fn protocol_macro(
         let reqf = request_fields.field_iter();
         let csf = clientstate_fields.field_iter();
         quote! {
-            pub fn prepare(rng: &mut impl RngCore,
+            pub fn prepare(rng: &mut (impl CryptoRng + RngCore),
                 #(#client_show_args)* #(#client_issue_args)* #client_params_arg)
                     -> Result<(Request, ClientState),CMZError> {
                 let bp = cmz_basepoints::<Point>();
@@ -1953,7 +1953,7 @@ fn protocol_macro(
         };
 
         quote! {
-            pub fn handle<F,A>(rng: &mut impl RngCore,
+            pub fn handle<F,A>(rng: &mut (impl CryptoRng + RngCore),
                 request: Request, fill_creds: F, authorize: A)
                 -> #rettype
             where

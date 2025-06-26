@@ -9,7 +9,7 @@ use generic_static::StaticTypeMap;
 use group::prime::PrimeGroup;
 use group::{Group, GroupEncoding, WnafBase, WnafScalar};
 use lazy_static::lazy_static;
-use rand_core::RngCore;
+use rand::RngCore;
 pub use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use serde_with::{serde_as, DeserializeAs, SerializeAs};
 pub use sigma_compiler::*;
@@ -389,7 +389,7 @@ where
 ///     use cmz::{CMZ, CMZCred, CMZCredential, CMZPrivkey, CMZPubkey, CMZMac};
 ///     use cmz::{cmz_privkey_to_pubkey, serde_as, SerdeScalar, Serialize, Deserialize};
 ///     use group::Group;
-///     use rand_core::RngCore;
+///     use rand::{CryptoRng, RngCore};
 ///     use curve25519_dalek::ristretto::RistrettoPoint as Grp;
 ///     CMZ!{ Name<Grp>: attr1, attr2, attr3 }
 ///

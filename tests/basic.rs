@@ -2,7 +2,7 @@ use cmz::*;
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use group::Group;
-use rand_core::RngCore;
+use rand::{CryptoRng, RngCore};
 use sha2::Sha512;
 
 CMZ! { Basic<RistrettoPoint> :

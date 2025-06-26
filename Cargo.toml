@@ -10,7 +10,7 @@ generic_static = "0.2"
 group = "0.13"
 hex = { version = "0.4", features = [ "serde" ] }
 lazy_static = "1"
-rand_core = "0.6"
+rand = "0.8.5"
 serde = { version = "1", features = [ "derive" ] }
 serde_bytes = "0.11"
 serde_with = "3"
@@ -20,5 +20,4 @@ thiserror = "2"
 [dev-dependencies]
 bincode = "1"
 curve25519-dalek = { version = "4", features = [ "group", "rand_core", "digest" ] }
-rand = "0.8"
 sha2 = "0.10"

@@ -5,7 +5,7 @@
 use cmz::*;
 use curve25519_dalek::ristretto::RistrettoPoint as G;
 use group::Group;
-use rand_core::RngCore;
+use rand::{CryptoRng, RngCore};
 use sha2::Sha512;
 
 CMZ! { Wallet: randid, balance }
@@ -48,7 +48,7 @@ macro_rules! protos_def {
             // The issuer runs this on its own to create an Item credential for a
             // particular item (specified by a serial number) with a given price.
             fn issue_item(
-                rng: &mut impl RngCore,
+                rng: &mut (impl CryptoRng + RngCore),
                 serialno: u128,
                 price: u128,
                 privkey: &CMZPrivkey<G>,
@@ -77,7 +77,7 @@ macro_rules! protos_def {
             // with funds, to sent to a client.  The issuer will presumably charge
             // the client out of band for this loaded wallet.
             fn issue_wallet(
-                rng: &mut impl RngCore,
+                rng: &mut (impl CryptoRng + RngCore),
                 balance: u128,
                 privkey: &CMZPrivkey<G>,
                 public: &CMZPubkey<G>,
