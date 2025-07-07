@@ -54,9 +54,11 @@ macro_rules! protos_def {
                 privkey: &CMZPrivkey<G>,
                 public: &CMZPubkey<G>,
             ) -> Result<Item, CMZError> {
-                let (request, state) = $item_issue::prepare(&mut *rng, Item::using_pubkey(public))?;
+                let (request, state) =
+                    $item_issue::prepare(&mut *rng, b"issue_item", Item::using_pubkey(public))?;
                 let (reply, _) = $item_issue::handle(
                     &mut *rng,
+                    b"issue_item",
                     request,
                     |I: &mut Item| {
                         I.set_privkey(privkey);
@@ -82,10 +84,14 @@ macro_rules! protos_def {
                 privkey: &CMZPrivkey<G>,
                 public: &CMZPubkey<G>,
             ) -> Result<Wallet, CMZError> {
-                let (request, state) =
-                    $wallet_issue::prepare(&mut *rng, Wallet::using_pubkey(public))?;
+                let (request, state) = $wallet_issue::prepare(
+                    &mut *rng,
+                    b"issue_wallet",
+                    Wallet::using_pubkey(public),
+                )?;
                 let (reply, _) = $wallet_issue::handle(
                     &mut *rng,
+                    b"issue_wallet",
                     request,
                     |W: &mut Wallet| {
                         W.set_privkey(privkey);
@@ -134,13 +140,14 @@ macro_rules! protos_def {
             let mut N = Wallet::using_pubkey(&wallet_pub);
             N.balance = Some(initial_wallet.balance.unwrap() - ebook_item.price.unwrap());
             let (request, state) =
-                $wallet_spend::prepare(&mut rng, &initial_wallet, &ebook_item, N)?;
+                $wallet_spend::prepare(&mut rng, b"test_wallet", &initial_wallet, &ebook_item, N)?;
             let reqbytes = request.as_bytes();
 
             // issuer actions
             let recvreq = $wallet_spend::Request::try_from(&reqbytes[..]).unwrap();
             let (reply, (_W_issuer, _I_issuer, _N_issuer)) = $wallet_spend::handle(
                 &mut rng,
+                b"test_wallet",
                 recvreq,
                 |W: &mut Wallet, I: &mut Item, N: &mut Wallet| {
                     W.set_privkey(&wallet_priv);
@@ -170,8 +177,14 @@ macro_rules! protos_def {
             N_fee.balance =
                 Some(W_issued.balance.unwrap() - album_item.price.unwrap() - params.fee);
 
-            let (request_fee, state_fee) =
-                $wallet_spend_with_fee::prepare(&mut rng, &W_issued, &album_item, N_fee, &params)?;
+            let (request_fee, state_fee) = $wallet_spend_with_fee::prepare(
+                &mut rng,
+                b"test_wallet_fee",
+                &W_issued,
+                &album_item,
+                N_fee,
+                &params,
+            )?;
             let reqbytes_fee = request_fee.as_bytes();
 
             // issuer actions
@@ -179,6 +192,7 @@ macro_rules! protos_def {
             let (reply_fee, (_W_fee_issuer, _I_fee_isser, _N_fee_issuer)) =
                 $wallet_spend_with_fee::handle(
                     &mut rng,
+                    b"test_wallet_fee",
                     recvreq_fee,
                     |W: &mut Wallet, I: &mut Item, N: &mut Wallet| {
                         W.set_privkey(&wallet_priv);

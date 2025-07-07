@@ -46,7 +46,7 @@ fn test_basic() {
     basic_cred.attr1 = Some(Scalar::ZERO);
     basic_cred.attr2 = Some(Scalar::ONE);
 
-    let (req, state) = basic_proto::prepare(&mut rng, &basic_cred).unwrap();
+    let (req, state) = basic_proto::prepare(&mut rng, b"test_basic", &basic_cred).unwrap();
     println!("{req:#?}");
     println!("{state:#?}");
 }

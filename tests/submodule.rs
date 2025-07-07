@@ -41,10 +41,11 @@ pub mod submod {
         basic_iss.x = Some(Scalar::ZERO);
         basic_iss.y = Some(Scalar::ONE);
         basic_iss.z = Some(Scalar::ONE);
-        let (ireq, istate) = issue_proto::prepare(&mut rng, basic_iss).unwrap();
+        let (ireq, istate) = issue_proto::prepare(&mut rng, b"issue_proto", basic_iss).unwrap();
 
         let (ireply, _) = issue_proto::handle(
             &mut rng,
+            b"issue_proto",
             ireq,
             |N: &mut Basic| {
                 N.set_privkey(&privkey);
@@ -62,10 +63,12 @@ pub mod submod {
         basic_new.y = Some(2u128.into());
         basic_new.z = Some(3u128.into());
 
-        let (req, state) = basic_proto::prepare(&mut rng, &basic_cred, basic_new).unwrap();
+        let (req, state) =
+            basic_proto::prepare(&mut rng, b"basic_proto", &basic_cred, basic_new).unwrap();
 
         let (reply, _) = basic_proto::handle(
             &mut rng,
+            b"basic_proto",
             req,
             |A: &mut Basic, N: &mut Basic| {
                 A.set_privkey(&privkey);

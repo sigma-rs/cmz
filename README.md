@@ -201,11 +201,16 @@ the following signature:
 ```rust
     pub fn prepare(
         rng: &mut impl RngCore,
+        session_id: &[u8],
         W: &Wallet,
         I: &Item,
         N: Wallet,
     ) -> Result<(Request, ClientState), CMZError>
 ```
+
+The `session_id` parameter is a session identifier.  It can be any
+sequence of bytes, but the value passed here to `prepare` and below to
+`handle` must be the same.
 
 You should treat the `Request` and `ClientState` structs as opaque, but
 they are currently not, and have `Debug` implemented, so if you wanted,
@@ -222,6 +227,7 @@ the following signature:
 ```rust
     pub fn handle<F,A>(
         rng: &mut impl RngCore,
+        session_id: &[u8],
         request: Request,
         fill_creds: F,
         authorize: A,

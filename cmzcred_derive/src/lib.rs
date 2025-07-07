@@ -638,6 +638,7 @@ fn protocol_macro(
     let B_ident = format_ident!("B_generator");
     let d_ident = format_ident!("d_privkey");
     let D_ident = format_ident!("D_pubkey");
+    let iss_proof_sessid_ident = format_ident!("iss_proof_sessid");
 
     prepare_code = quote! {
         #prepare_code
@@ -668,6 +669,10 @@ fn protocol_macro(
         };
         iss_proof_const_points.push(B_ident.clone());
     }
+
+    // Stash the issue proof session id in prepare so that it can be
+    // used in finalize
+    clientstate_fields.push_bytevec(&iss_proof_sessid_ident);
 
     for iss_cred in proto_spec.issue_creds.iter() {
         // Are there any Hide or Joint attributes in this particular
@@ -1280,7 +1285,7 @@ fn protocol_macro(
             };
             // If prove returns Err here, there's an actual bug.
             let #iss_proof_ident = issuer_proof::prove(&iss_proof_params,
-                &iss_proof_witness, rng).unwrap();
+                &iss_proof_witness, &iss_proof_sessid, rng).unwrap();
         };
         let cli_iss_params_fields = iss_proof_pub_points
             .iter()
@@ -1292,7 +1297,7 @@ fn protocol_macro(
                 #(#cli_iss_params_fields,)*
             };
             if issuer_proof::verify(&iss_proof_params,
-                &reply.#iss_proof_ident).is_err() {
+                &reply.#iss_proof_ident, &self.iss_proof_sessid).is_err() {
                 return Err((CMZError::IssProofFailed, self));
             }
         };
@@ -1555,7 +1560,7 @@ fn protocol_macro(
         };
         // If prove returns Err here, there's an actual bug.
         let #cli_proof_ident = client_proof::prove(&cli_proof_params,
-            &cli_proof_witness, rng).unwrap();
+            &cli_proof_witness, &cli_proof_sessid, rng).unwrap();
     };
     let iss_cli_params_fields = cli_proof_pub_points
         .iter()
@@ -1568,7 +1573,7 @@ fn protocol_macro(
             #(#iss_cli_params_fields,)*
         };
         if client_proof::verify(&cli_proof_params,
-            &request.#cli_proof_ident).is_err() {
+            &request.#cli_proof_ident, &cli_proof_sessid).is_err() {
             return Err(CMZError::CliProofFailed);
         }
     };
@@ -1820,9 +1825,16 @@ fn protocol_macro(
         let csf = clientstate_fields.field_iter();
         quote! {
             pub fn prepare(rng: &mut (impl CryptoRng + RngCore),
+                session_id: &[u8],
                 #(#client_show_args)* #(#client_issue_args)* #client_params_arg)
                     -> Result<(Request, ClientState),CMZError> {
                 let bp = cmz_basepoints::<Point>();
+                let mut cli_proof_sessid: Vec<u8> = Vec::new();
+                cli_proof_sessid.extend(b"cli_");
+                cli_proof_sessid.extend(session_id);
+                let mut iss_proof_sessid: Vec<u8> = Vec::new();
+                iss_proof_sessid.extend(b"iss_");
+                iss_proof_sessid.extend(session_id);
                 #prepare_code
                 Ok((Request{#(#reqf,)*}, ClientState{#(#csf,)*}))
             }
@@ -1954,6 +1966,7 @@ fn protocol_macro(
 
         quote! {
             pub fn handle<F,A>(rng: &mut (impl CryptoRng + RngCore),
+                session_id: &[u8],
                 request: Request, fill_creds: F, authorize: A)
                 -> #rettype
             where
@@ -1963,6 +1976,12 @@ fn protocol_macro(
                     Result<(),CMZError>
             {
                 let bp = cmz_basepoints::<Point>();
+                let mut cli_proof_sessid: Vec<u8> = Vec::new();
+                cli_proof_sessid.extend(b"cli_");
+                cli_proof_sessid.extend(session_id);
+                let mut iss_proof_sessid: Vec<u8> = Vec::new();
+                iss_proof_sessid.extend(b"iss_");
+                iss_proof_sessid.extend(session_id);
                 #(#cred_decls)*
                 #handle_code_pre_fill
                 #fill_creds_assign fill_creds(#(#fill_creds_params)*)?;
@@ -2009,8 +2028,10 @@ fn protocol_macro(
 
         quote! {
             impl ClientState {
-                pub fn finalize(self, reply: Reply)
-                    -> #rettype {
+                pub fn finalize(
+                    self,
+                    reply: Reply,
+                ) -> #rettype {
                     let bp = cmz_basepoints::<Point>();
                     #(#cred_decls)*
                     #finalize_code
