@@ -104,7 +104,7 @@ The primary way to create a protocol is with the `muCMZProtocol!` macro.
       [ W: Wallet { randid: R, balance: H },
         I: Item { serialno: H, price: H } ],
       N: Wallet { randid: J, balance: H },
-      N.balance >= 0,
+      (0..=100000000).contains(N.balance),
       W.balance = N.balance + I.price
     }
 ```
@@ -309,7 +309,7 @@ example:
       [ W: Wallet { randid: R, balance: H },
         I: Item { serialno: H, price: H } ],
       N: Wallet { randid: J, balance: H },
-      N.balance >= 0,
+      (0..=100000000).contains(N.balance),
       W.balance = N.balance + I.price + fee
     }
 ```

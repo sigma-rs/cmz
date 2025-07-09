@@ -31,7 +31,7 @@ macro_rules! protos_def {
                   [ W: Wallet { randid: R, balance: H },
                     I: Item { serialno: H, price: H } ],
                   N: Wallet { randid: J, balance: H },
-        //          N.balance >= 0,
+                  (0..=100000000).contains(N.balance),
                   W.balance = N.balance + I.price
                 }
 
@@ -39,7 +39,7 @@ macro_rules! protos_def {
                  [ W: Wallet { randid: R, balance: H },
                    I: Item { serialno: H, price: H } ],
                  N: Wallet { randid: J, balance: H },
-        //         N.balance >= 0,
+                 (0..=100000000).contains(N.balance),
                  W.balance = N.balance + I.price + fee
                }
 
