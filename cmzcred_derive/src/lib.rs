@@ -1268,7 +1268,7 @@ fn protocol_macro(
         // The issuer will create a zero-knowledge proof
         let iss_proof_ident = format_ident!("iss_proof");
         reply_fields.push_bytevec(&iss_proof_ident);
-        let iss_params_fields = iss_proof_pub_points
+        let iss_instance_fields = iss_proof_pub_points
             .iter()
             .chain(iss_proof_const_points.iter())
             .chain(iss_proof_pub_scalars.iter());
@@ -1277,26 +1277,27 @@ fn protocol_macro(
             .chain(iss_proof_priv_scalars.iter());
         handle_code_post_auth = quote! {
             #handle_code_post_auth
-            let iss_proof_params = issuer_proof::Params {
-                #(#iss_params_fields,)*
+            let iss_proof_instance = issuer_proof::Instance {
+                #(#iss_instance_fields,)*
             };
             let iss_proof_witness = issuer_proof::Witness {
                 #(#iss_witness_fields,)*
             };
             // If prove returns Err here, there's an actual bug.
-            let #iss_proof_ident = issuer_proof::prove(&iss_proof_params,
+            let #iss_proof_ident =
+            issuer_proof::prove(&iss_proof_instance,
                 &iss_proof_witness, &iss_proof_sessid, rng).unwrap();
         };
-        let cli_iss_params_fields = iss_proof_pub_points
+        let cli_iss_instance_fields = iss_proof_pub_points
             .iter()
             .chain(iss_proof_const_points.iter())
             .chain(iss_proof_pub_scalars.iter());
         finalize_code = quote! {
             #finalize_code
-            let iss_proof_params = issuer_proof::Params {
-                #(#cli_iss_params_fields,)*
+            let iss_proof_instance = issuer_proof::Instance {
+                #(#cli_iss_instance_fields,)*
             };
-            if issuer_proof::verify(&iss_proof_params,
+            if issuer_proof::verify(&iss_proof_instance,
                 &reply.#iss_proof_ident, &self.iss_proof_sessid).is_err() {
                 return Err((CMZError::IssProofFailed, self));
             }
@@ -1542,7 +1543,7 @@ fn protocol_macro(
     // The client will create a zero-knowledge proof
     let cli_proof_ident = format_ident!("cli_proof");
     request_fields.push_bytevec(&cli_proof_ident);
-    let cli_params_fields = cli_proof_pub_points
+    let cli_instance_fields = cli_proof_pub_points
         .iter()
         .chain(cli_proof_const_points.iter())
         .chain(cli_proof_cind_points.iter())
@@ -1552,27 +1553,27 @@ fn protocol_macro(
         .chain(cli_proof_priv_scalars.iter());
     prepare_code = quote! {
         #prepare_code
-        let cli_proof_params = client_proof::Params {
-            #(#cli_params_fields,)*
+        let cli_proof_instance = client_proof::Instance {
+            #(#cli_instance_fields,)*
         };
         let cli_proof_witness = client_proof::Witness {
             #(#cli_witness_fields,)*
         };
         // If prove returns Err here, there's an actual bug.
-        let #cli_proof_ident = client_proof::prove(&cli_proof_params,
+        let #cli_proof_ident = client_proof::prove(&cli_proof_instance,
             &cli_proof_witness, &cli_proof_sessid, rng).unwrap();
     };
-    let iss_cli_params_fields = cli_proof_pub_points
+    let iss_cli_instance_fields = cli_proof_pub_points
         .iter()
         .chain(cli_proof_const_points.iter())
         .chain(cli_proof_cind_points.iter())
         .chain(cli_proof_pub_scalars.iter());
     handle_code_post_fill = quote! {
         #handle_code_post_fill
-        let cli_proof_params = client_proof::Params {
-            #(#iss_cli_params_fields,)*
+        let cli_proof_instance = client_proof::Instance {
+            #(#iss_cli_instance_fields,)*
         };
-        if client_proof::verify(&cli_proof_params,
+        if client_proof::verify(&cli_proof_instance,
             &request.#cli_proof_ident, &cli_proof_sessid).is_err() {
             return Err(CMZError::CliProofFailed);
         }
