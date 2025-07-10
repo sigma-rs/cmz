@@ -1766,9 +1766,17 @@ fn protocol_macro(
         .for_each(|expr| statement_scoper.visit_expr_mut(expr));
 
     // The client's zero-knowledge proof
+    let cli_sigma_compiler_macro = if emit_client && emit_issuer {
+        quote! { sigma_compiler }
+    } else if emit_client {
+        quote! { sigma_compiler_prover }
+    } else {
+        quote! { sigma_compiler_verifier }
+    };
+
     let cli_proof = {
         quote! {
-            sigma_compiler! { client_proof<Point>,
+            #cli_sigma_compiler_macro! { client_proof<Point>,
                 (#(rand #cli_proof_rand_scalars,)*
                  #(#cli_proof_priv_scalars,)*
                  #(pub #cli_proof_pub_scalars,)*),
@@ -1783,9 +1791,17 @@ fn protocol_macro(
     println!("cli_proof = {cli_proof}");
 
     // The issuer's zero-knowledge proof
+    let iss_sigma_compiler_macro = if emit_client && emit_issuer {
+        quote! { sigma_compiler }
+    } else if emit_issuer {
+        quote! { sigma_compiler_prover }
+    } else {
+        quote! { sigma_compiler_verifier }
+    };
+
     let iss_proof = {
         quote! {
-            sigma_compiler! { issuer_proof<Point>,
+            #iss_sigma_compiler_macro! { issuer_proof<Point>,
                 (#(rand #iss_proof_rand_scalars,)*
                  #(#iss_proof_priv_scalars,)*
                  #(pub #iss_proof_pub_scalars,)*),
