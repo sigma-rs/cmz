@@ -286,9 +286,9 @@ or if as in this case, there's just one, as a single element.
 ### Parameterized Protocols
 
 A protocol can optionally be declared as having _parameters_, which are
-public Scalar constants that will be filled in at runtime.  You declare
-parameters by changing the first line of the `muCMZProtocol!` macro
-invocation from, for example:
+public Scalar or Point constants that will be filled in at runtime.  You
+declare parameters by changing the first line of the `muCMZProtocol!`
+macro invocation from, for example:
 
 ```rust
     muCMZProtocol! { proto_name,
@@ -297,12 +297,14 @@ invocation from, for example:
 to:
 
 ```rust
-    muCMZProtocol! { proto_name<param1, param2>,
+    muCMZProtocol! { proto_name<param1, param2, @param3>,
 ```
 
 then you can use `param1` and `param2` wherever you could have used a
-literal Scalar constant in the statements in the statement list.  For
-example:
+literal Scalar constant in the statements in the statement list, and
+`param3` wherever you could have used a public Point (the `@` indicates
+the parameter is a Point; the default is that the parameter is a
+Scalar).  For example:
 
 ```rust
     muCMZProtocol! { wallet_spend<fee>,

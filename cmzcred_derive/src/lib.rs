@@ -428,6 +428,7 @@ impl<ShowOrIssue: Parse + Copy, const VALID_OPTIONAL: bool> Parse
 struct ProtoSpec {
     proto_name: Ident,
     params: Vec<Ident>,
+    point_params: Vec<Ident>,
     show_creds: Vec<CredSpec<ShowSpec, true>>,
     issue_creds: Vec<CredSpec<IssueSpec, false>>,
     statements: Vec<Expr>,
@@ -436,6 +437,7 @@ struct ProtoSpec {
 impl Parse for ProtoSpec {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut params: Vec<Ident> = Vec::new();
+        let mut point_params: Vec<Ident> = Vec::new();
         let proto_name: Ident = input.parse()?;
         // See if there are optional parameters; Rust does not provide a
         // convenient angle-bracket parser like it does parens, square
@@ -446,8 +448,16 @@ impl Parse for ProtoSpec {
                 if input.peek(Token![>]) {
                     break;
                 }
-                let param: Ident = input.parse()?;
-                params.push(param);
+                if input.peek(Token![@]) {
+                    // Param identifiers starting with @ are Points
+                    // rather than Scalars.
+                    input.parse::<Token![@]>()?;
+                    let param: Ident = input.parse()?;
+                    point_params.push(param);
+                } else {
+                    let param: Ident = input.parse()?;
+                    params.push(param);
+                }
                 if input.peek(Token![>]) {
                     break;
                 }
@@ -467,6 +477,7 @@ impl Parse for ProtoSpec {
         Ok(ProtoSpec {
             proto_name,
             params,
+            point_params,
             show_creds: showvec.0,
             issue_creds: issuevec.0,
             statements,
@@ -555,7 +566,7 @@ fn protocol_macro(
     let proto_spec: ProtoSpec = parse_macro_input!(input as ProtoSpec);
 
     let proto_name = &proto_spec.proto_name;
-    let has_params = !proto_spec.params.is_empty();
+    let has_params = !proto_spec.params.is_empty() || !proto_spec.point_params.is_empty();
     let tot_num_creds = proto_spec.show_creds.len() + proto_spec.issue_creds.len();
 
     // Use the group of the first named credential type
@@ -1540,6 +1551,20 @@ fn protocol_macro(
         cli_proof_idmap.insert(("".to_string(), paramid.to_string()), scoped_param.clone());
     }
 
+    for paramid in proto_spec.point_params.iter() {
+        let scoped_param = format_ident!("param_{}", paramid);
+        prepare_code = quote! {
+            #prepare_code
+            let #scoped_param = params.#paramid;
+        };
+        handle_code_post_fill = quote! {
+            #handle_code_post_fill
+            let #scoped_param = params.#paramid;
+        };
+        cli_proof_pub_points.push(scoped_param.clone());
+        cli_proof_idmap.insert(("".to_string(), paramid.to_string()), scoped_param.clone());
+    }
+
     // The client will create a zero-knowledge proof
     let cli_proof_ident = format_ident!("cli_proof");
     request_fields.push_bytevec(&cli_proof_ident);
@@ -1582,9 +1607,11 @@ fn protocol_macro(
     // Build the Params struct, if we have params
     let params_struct = if has_params {
         let param_list = &proto_spec.params;
+        let point_param_list = &proto_spec.point_params;
         quote! {
             pub struct Params {
                 #( pub #param_list: Scalar, )*
+                #( pub #point_param_list: Point, )*
             }
         }
     } else {
