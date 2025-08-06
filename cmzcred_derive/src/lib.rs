@@ -1106,6 +1106,7 @@ fn protocol_macro(
             handle_code_post_auth = quote! {
                 let #b_cred = <Scalar as ff::Field>::random(&mut *rng);
                 let #P_cred = bp.mulB(&#b_cred);
+                #iss_cred_id.MAC.P = #P_cred;
                 let #x0_cred = #iss_cred_id.get_privkey().x0;
                 let #xr_cred = #iss_cred_id.get_privkey().xr;
                 let #X0_cred = #iss_cred_id.get_pubkey().X0.unwrap();
@@ -1209,6 +1210,7 @@ fn protocol_macro(
                 #handle_code_post_auth
                 let #b_cred = <Scalar as ff::Field>::random(&mut *rng);
                 let #P_cred = bp.mulA(&#b_cred);
+                #iss_cred_id.MAC.P = #P_cred;
                 let #x0_cred = #iss_cred_id.get_privkey().x0;
                 let #X0_cred = #iss_cred_id.get_pubkey().X0.unwrap();
                 let #R_cred = #b_cred * (bp.mulA(&#x0_cred) + #K_cred);
