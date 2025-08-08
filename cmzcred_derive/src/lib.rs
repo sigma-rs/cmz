@@ -665,15 +665,15 @@ fn protocol_macro(
     };
     iss_proof_const_points.push(A_ident.clone());
 
+    prepare_code = quote! {
+        #prepare_code
+        let #B_ident = bp.B();
+    };
+    handle_code_pre_fill = quote! {
+        #handle_code_pre_fill
+        let #B_ident = bp.B();
+    };
     if !use_muCMZ || !proto_spec.issue_creds.is_empty() {
-        prepare_code = quote! {
-            #prepare_code
-            let #B_ident = bp.B();
-        };
-        handle_code_pre_fill = quote! {
-            #handle_code_pre_fill
-            let #B_ident = bp.B();
-        };
         finalize_code = quote! {
             #finalize_code
             let #B_ident = bp.B();
