@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cmzcred_derive = { path = "cmzcred_derive" }
+cmz_derive = { path = "cmz_derive" }
 ff = "0.13"
 generic_static = "0.2"
 group = "0.13"
