@@ -8,3 +8,5 @@ syn = { version = "2.0", features = ["extra-traits", "visit-mut"] }
 quote = "1.0"
 darling = "0.20"
 proc-macro2 = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+prettyplease = "0.2"
