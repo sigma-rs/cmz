@@ -1845,6 +1845,7 @@ pub fn cmz_core(
         #[allow(non_snake_case)]
         pub mod #proto_name {
             use super::*;
+            use sigma_compiler::*;
             use group::GroupEncoding;
 
             #group_types

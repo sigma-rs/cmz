@@ -189,6 +189,12 @@ struct GroupIdent {
     group: Ident,
 }
 
+/// Internal-use derive macro for CMZ credentials.
+///
+/// The `CMZ!` macro will expand to a struct tagged with this
+/// `CMZCred` derive macro.  This attribute will add the methods that
+/// implement the `CMZCredential` trait.  You should never need to
+/// manually use this `CMZCred` derive macro.
 #[proc_macro_derive(CMZCred, attributes(cmzcred_group))]
 pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
     // Construct a representation of Rust code as a syntax tree
@@ -203,10 +209,12 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
     impl_cmzcred_derive(&ast, &group_ident.group)
 }
 
+#[cfg(not(doctest))]
 /** The CMZ Protocol creation macros.
 
    The format is:
 
+   ```
    let proto = muCMZProtocol! { proto_name<param1,param2>,
      [ A: Cred {
          attr1: H,
@@ -226,6 +234,7 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
      A.attr1 == B.attr3 + param1,
      A.attr1 == C.attr7,
    };
+   ```
 
    The parameters are:
    - an identifier for the protocol
@@ -271,37 +280,42 @@ pub fn cmzcred_derive(input: TokenStream) -> TokenStream {
   either create the code for both sides of the protocol.)
 */
 #[proc_macro]
-pub fn CMZ14Protocol(input: TokenStream) -> TokenStream {
-    let proto_spec = parse_macro_input!(input as ProtoSpec);
-    cmz_core(&proto_spec, false, true, true).into()
-}
-
-#[proc_macro]
-pub fn CMZ14CliProtocol(input: TokenStream) -> TokenStream {
-    let proto_spec = parse_macro_input!(input as ProtoSpec);
-    cmz_core(&proto_spec, false, true, false).into()
-}
-
-#[proc_macro]
-pub fn CMZ14IssProtocol(input: TokenStream) -> TokenStream {
-    let proto_spec = parse_macro_input!(input as ProtoSpec);
-    cmz_core(&proto_spec, false, false, true).into()
-}
-
-#[proc_macro]
 pub fn muCMZProtocol(input: TokenStream) -> TokenStream {
     let proto_spec = parse_macro_input!(input as ProtoSpec);
     cmz_core(&proto_spec, true, true, true).into()
 }
 
+/// See [`muCMZProtocol!`]
 #[proc_macro]
 pub fn muCMZCliProtocol(input: TokenStream) -> TokenStream {
     let proto_spec = parse_macro_input!(input as ProtoSpec);
     cmz_core(&proto_spec, true, true, false).into()
 }
 
+/// See [`muCMZProtocol!`]
 #[proc_macro]
 pub fn muCMZIssProtocol(input: TokenStream) -> TokenStream {
     let proto_spec = parse_macro_input!(input as ProtoSpec);
     cmz_core(&proto_spec, true, false, true).into()
+}
+
+/// See [`muCMZProtocol!`]
+#[proc_macro]
+pub fn CMZ14Protocol(input: TokenStream) -> TokenStream {
+    let proto_spec = parse_macro_input!(input as ProtoSpec);
+    cmz_core(&proto_spec, false, true, true).into()
+}
+
+/// See [`muCMZProtocol!`]
+#[proc_macro]
+pub fn CMZ14CliProtocol(input: TokenStream) -> TokenStream {
+    let proto_spec = parse_macro_input!(input as ProtoSpec);
+    cmz_core(&proto_spec, false, true, false).into()
+}
+
+/// See [`muCMZProtocol!`]
+#[proc_macro]
+pub fn CMZ14IssProtocol(input: TokenStream) -> TokenStream {
+    let proto_spec = parse_macro_input!(input as ProtoSpec);
+    cmz_core(&proto_spec, false, false, true).into()
 }

@@ -10,9 +10,10 @@ use group::prime::PrimeGroup;
 use group::{Group, GroupEncoding, WnafBase, WnafScalar};
 use lazy_static::lazy_static;
 use rand::RngCore;
-pub use serde::{Deserialize, Deserializer, Serialize, Serializer};
-pub use serde_with::{serde_as, DeserializeAs, SerializeAs};
-pub use sigma_compiler::*;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+pub use serde_with::serde_as;
+use serde_with::{DeserializeAs, SerializeAs};
+use sigma_compiler::*;
 use thiserror::Error;
 
 // We need wrappers for group::Group and ff::PrimeField elements to be
@@ -22,6 +23,7 @@ use thiserror::Error;
 
 mod group_serde;
 
+/// A wrapper for serializing and deserializing a `Scalar`
 pub struct SerdeScalar;
 
 impl<F: PrimeField> SerializeAs<F> for SerdeScalar {
@@ -42,6 +44,8 @@ impl<'de, F: PrimeField> DeserializeAs<'de, F> for SerdeScalar {
     }
 }
 
+/// A wrapper for serializing and deserializing a `Point` (a group
+/// element)
 pub struct SerdePoint;
 
 impl<G: Group + GroupEncoding> SerializeAs<G> for SerdePoint {
@@ -211,11 +215,12 @@ lazy_static! {
     static ref basepoints_map: StaticTypeMap<Box<dyn CMZBP>> = StaticTypeMap::new();
 }
 
-/// For a given group type G, if bp is Some(b), then load the mapping
-/// from G to b into the basepoints_map.  (If a mapping from G already
-/// exists, the old one will be kept and the new one ignored.)  Whether
-/// bp is Some(b) or None, this function returns the (possibly new)
-/// target of the basepoints_map, as a &'static CMZBasepoints<G>.
+/// For a given group type `G`, if `bp` is `Some(b)`, then load the
+/// mapping from `G` to `b` into the `basepoints_map`.  (If a mapping
+/// from `G` already exists, the old one will be kept and the new one
+/// ignored.)  Whether `bp` is `Some(b)` or `None`, this function
+/// returns the (possibly new) target of the `basepoints_map`, as a
+/// `&'static CMZBasepoints<G>`.
 fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> {
     match bp {
         Some(b) => basepoints_map.call_once::<Box<dyn CMZBP>, _>(|| Box::new(b.clone())),
@@ -228,23 +233,28 @@ fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> 
     .unwrap()
 }
 
-/// CMZ credentials require two generators, A and B.  B is the
+/// Initialize the required second generator for a `PrimeGroup`.
+///
+/// CMZ credentials require two generators, `A` and `B`.  `B` is the
 /// "standard" generator.  A can be any other generator (that is, any
 /// other non-identity point in a prime-order group), but it is required
-/// that no one know the discrete log between A and B.  So you can't
-/// generate A by multiplying B by some scalar, for example.  If your
+/// that no one know the discrete log between `A` and `B`.  So you can't
+/// generate `A` by multiplying `B` by some scalar, for example.  If your
 /// group has a hash_from_bytes function, then you can use that to generate
-/// A. For example, if your group is a curve25519 group, you can
+/// `A`. For example, if your group is a curve25519 group, you can
 ///
-///    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT as B;
-///    use sha2::Sha512;
-///    let A = G::hash_from_bytes::<Sha512>(b"CMZ Generator A")
-///    assert_ne!(A, B);
+/// ```
+/// use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT as B;
+/// use curve25519_dalek::ristretto::RistrettoPoint as G;
+/// use sha2::Sha512;
+/// let A = G::hash_from_bytes::<Sha512>(b"CMZ Generator A");
+/// assert_ne!(A, B);
+/// ```
 ///
-/// Otherwise, you're possibly on your own to generate an appropriate generator A.
-/// Everyone who uses a given credential type with a given group will
-/// need to use the same A.  You need to call this before doing any
-/// operations with a credential.
+/// Otherwise, you're possibly on your own to generate an appropriate
+/// generator `A`.  Everyone who uses a given credential type with a
+/// given group will need to use the same `A`.  You need to call this
+/// before doing any operations with a credential.
 pub fn cmz_group_init<G: PrimeGroup>(generator_A: G) {
     let bp = CMZBasepoints::<G>::init(generator_A);
     load_bp(Some(bp));
@@ -386,8 +396,7 @@ where
 ///
 /// Use this macro to declare a CMZ credential struct type.
 ///
-///     use cmz::{CMZ, CMZCred, CMZCredential, CMZPrivkey, CMZPubkey, CMZMac};
-///     use cmz::{cmz_privkey_to_pubkey, serde_as, SerdeScalar, Serialize, Deserialize};
+///     use cmz::*;
 ///     use group::Group;
 ///     use rand::{CryptoRng, RngCore};
 ///     use curve25519_dalek::ristretto::RistrettoPoint as Grp;
@@ -400,8 +409,8 @@ where
 /// the [`CMZCredential`] trait.  The mathematical group used (the field for
 /// the values of the attributes and the private key elements, and the group
 /// elements for the commitments, MAC components, and public key elements)
-/// is [`Grp`].  If [`Grp`] is omitted, the macro will default to using a
-/// group called "G", which you can define, for example, as:
+/// is `Grp`.  If `Grp` is omitted, the macro will default to using a
+/// group called `G`, which you can define, for example, as:
 ///
 ///     use curve25519_dalek::ristretto::RistrettoPoint as G;
 ///
@@ -415,7 +424,7 @@ where
 macro_rules! CMZ {
     ( $name: ident < $G: ident > : $( $id: ident ),+ ) => {
         #[serde_as]
-        #[derive(CMZCred,Clone,Debug,Default,Serialize,Deserialize)]
+        #[derive(CMZCred,Clone,Debug,Default,serde::Serialize,serde::Deserialize)]
         #[cmzcred_group(group = $G)]
         pub struct $name {
         $(
@@ -429,7 +438,7 @@ macro_rules! CMZ {
     };
     ( $name: ident : $( $id: ident ),+ ) => {
         #[serde_as]
-        #[derive(CMZCred,Clone,Debug,Default,Serialize,Deserialize)]
+        #[derive(CMZCred,Clone,Debug,Default,serde::Serialize,serde::Deserialize)]
         #[cmzcred_group(group = G)]
         pub struct $name {
         $(
