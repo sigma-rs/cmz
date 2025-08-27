@@ -1559,7 +1559,6 @@ pub fn cmz_core(
             }
         }
     };
-    println!("cli_proof = {cli_proof}");
 
     // The issuer's zero-knowledge proof
     let iss_sigma_compiler_macro = if emit_client && emit_issuer {
@@ -1583,7 +1582,6 @@ pub fn cmz_core(
             }
         }
     };
-    println!("iss_proof = {iss_proof}");
 
     // The argument list for the client's prepare function.  There is an
     // immutable reference for each credential to be shown, and an owned
