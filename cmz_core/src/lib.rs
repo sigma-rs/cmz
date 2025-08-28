@@ -2,6 +2,10 @@
 #![allow(non_snake_case)]
 
 //! The core functionality of the CMZ protocol macros
+//!
+//! You should not need to use this crate directly.  The [`cmz_core`]
+//! function is called by the `cmz_derive` crate to implement the
+//! `CMZProtocol` family of macros.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
@@ -166,7 +170,8 @@ impl<ShowOrIssue: Parse + Copy, const VALID_OPTIONAL: bool> Parse
     }
 }
 
-// A protocol specification, following the syntax described above.
+/// A parsed protocol specification, following the syntax described in
+/// the documentation for the `muCMZProtocol!` macro in the `cmz` crate.
 #[derive(Debug)]
 pub struct ProtoSpec {
     proto_name: Ident,
@@ -297,9 +302,10 @@ impl StructFieldList {
     }
 }
 
-// This is where the main work is done.  The six macros in the
-// CMZProtocol macro family (below) all call this function, with
-// different values for the bools.
+/// Produce the expansion of the `CMZProtocol` family of macros.
+///
+/// The six macros in the `CMZProtocol` macro family all call this
+/// function, with different values for the bools.
 pub fn cmz_core(
     proto_spec: &ProtoSpec,
     use_muCMZ: bool,
