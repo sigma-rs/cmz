@@ -221,7 +221,7 @@ You can serialize and deserialize a `Request` struct with
 using `serde` (`Serialize` and `Deserialize` are implemented for
 `Request`.)
 
-The generated `wallet_spend::handle`` function (run by the issuer) has
+The generated `wallet_spend::handle` function (run by the issuer) has
 the following signature:
 
 ```rust
@@ -246,9 +246,8 @@ just `W.randid`).  The hidden attributes from the credentials will be
 set to `None`, as will the implicit, set by issuer, and joint creation
 attributes.  It is the job of the `fill_creds` callback to:
 
-  - Set the values of the implicit, set by issuer, and the issuer
-    contribution to joint creation attributes (if any) for each shown
-    and issued credential
+  - Set the values of the implicit and set by issuer attributes (if any)
+    for each shown and issued credential
   - Set the private keys for each credential
 
 The `handle` function will then check that the credentials shown by the
@@ -286,25 +285,25 @@ or if as in this case, there's just one, as a single element.
 ### Parameterized Protocols
 
 A protocol can optionally be declared as having _parameters_, which are
-public Scalar or Point constants that will be filled in at runtime.  You
+public `Scalar` or `Point` constants that will be filled in at runtime.  You
 declare parameters by changing the first line of the `muCMZProtocol!`
 macro invocation from, for example:
 
-```rust
+```text
     muCMZProtocol! { proto_name,
 ```
 
 to:
 
-```rust
+```text
     muCMZProtocol! { proto_name<param1, param2, @param3>,
 ```
 
 then you can use `param1` and `param2` wherever you could have used a
-literal Scalar constant in the statements in the statement list, and
-`param3` wherever you could have used a public Point (the `@` indicates
-the parameter is a Point; the default is that the parameter is a
-Scalar).  For example:
+literal `Scalar` constant in the statements in the statement list, and
+`param3` wherever you could have used a public `Point` (the `@` indicates
+the parameter is a `Point`; the default is that the parameter is a
+`Scalar`).  For example:
 
 ```rust
     muCMZProtocol! { wallet_spend<fee>,

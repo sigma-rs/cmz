@@ -2,6 +2,8 @@
 // lowercase letters
 #![allow(non_snake_case)]
 
+#![doc = include_str!("../README.md")]
+
 pub use cmz_derive::*;
 use core::any::Any;
 use ff::{Field, PrimeField};
