@@ -22,7 +22,7 @@ A typical such group would be
 To declare a credential type, use the `CMZ!` macro at the top level of
 your crate or module (outside of any function):
 
-```rust
+```text
     CMZ! { Lox<RistrettoPoint> :
         id,
         bucket,
@@ -80,7 +80,7 @@ of funds in the wallet). We also have a second credential type called
 `serialno` (the serial number of the item), and `price` (the price of
 the item):
 
-```rust
+```text
 CMZ! { Wallet: randid, balance }
 CMZ! { Item: serialno, price }
 ```
@@ -99,7 +99,7 @@ credentials that anyone can download from the issuer's website.
 
 The primary way to create a protocol is with the `muCMZProtocol!` macro.
 
-```rust
+```text
     muCMZProtocol! { wallet_spend,
       [ W: Wallet { randid: R, balance: H },
         I: Item { serialno: H, price: H } ],
@@ -198,7 +198,7 @@ flow is:
 The generated `wallet_spend::prepare` function (run by the client) has
 the following signature:
 
-```rust
+```text
     pub fn prepare(
         rng: &mut impl RngCore,
         session_id: &[u8],
@@ -224,7 +224,7 @@ using `serde` (`Serialize` and `Deserialize` are implemented for
 The generated `wallet_spend::handle` function (run by the issuer) has
 the following signature:
 
-```rust
+```text
     pub fn handle<F,A>(
         rng: &mut impl RngCore,
         session_id: &[u8],
@@ -269,7 +269,7 @@ The client will then pass that deserialized `Reply` struct into the
 `finalize` method of the `ClientState` struct that was output by
 `prepare`, above.  The `finalize` method has the following signature:
 
-```rust
+```text
     pub fn finalize(
         self,
         reply: Reply,
@@ -305,7 +305,7 @@ literal `Scalar` constant in the statements in the statement list, and
 the parameter is a `Point`; the default is that the parameter is a
 `Scalar`).  For example:
 
-```rust
+```text
     muCMZProtocol! { wallet_spend<fee>,
       [ W: Wallet { randid: R, balance: H },
         I: Item { serialno: H, price: H } ],
