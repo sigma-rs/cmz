@@ -1,5 +1,5 @@
 [package]
-name = "cmz_derive"
+name = "cmz-derive"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
-cmz_core = { path = "../cmz_core" }
+cmz-core = { path = "../cmz-core" }
 syn = { version = "2.0", features = ["extra-traits", "visit-mut"] }
 quote = "1.0"
 darling = "0.20"
