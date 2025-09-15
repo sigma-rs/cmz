@@ -14,7 +14,7 @@ rand = "0.8.5"
 serde = { version = "1", features = [ "derive" ] }
 serde_bytes = "0.11"
 serde_with = "3"
-sigma_compiler = { path = "../sigma_compiler" }
+sigma-compiler = { path = "dev/sigma-compiler" }
 thiserror = "2"
 
 [dev-dependencies]
