@@ -1,7 +1,6 @@
 // We really want points to be capital letters and scalars to be
 // lowercase letters
 #![allow(non_snake_case)]
-
 #![doc = include_str!("../README.md")]
 
 pub use cmz_derive::*;
