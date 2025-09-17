@@ -183,17 +183,17 @@ impl<G: Group> CMZBasepoints<G> {
 // type, whereas we want the type G to map to a struct of type
 // CMZBasepoints<G>, which is different for each value of G.
 //
-// So we make a non-generic trait CMZBP that all instantiations of
+// So we make a non-generic trait CMZbp that all instantiations of
 // CMZBasepoints<G> implement (for all group types G), and have the
-// StaticTypeMap map each type G to a trait object Box<dyn CMZBP>.
+// StaticTypeMap map each type G to a trait object Box<dyn CMZbp>.
 //
 // Then to read the CMZBasepoints<G> back out, we look up the trait
-// object in the StaticTypeMap, yielding a Box<dyn CMZBP>.  We now need
+// object in the StaticTypeMap, yielding a Box<dyn CMZbp>.  We now need
 // to downcast this trait object to the concrete type CMZBasepoints<G>,
 // for a _specific_ G.  Rust provides downcasting, but only from &dyn Any
-// to the original concrete type, not from other things like &dyn CMZBP.
+// to the original concrete type, not from other things like &dyn CMZbp.
 // So first we need to upcast the trait object to &dyn Any, which we do
-// with an "as_any()" function in the CMZBP trait, and then downcast the
+// with an "as_any()" function in the CMZbp trait, and then downcast the
 // result to a CMZBasepoints<G> struct.
 //
 // The up/down casting pattern is from
@@ -201,19 +201,19 @@ impl<G: Group> CMZBasepoints<G> {
 
 // Static objects have to be Sync + Send, so enforce that as part of the
 // CMXBP trait
-trait CMZBP: Sync + Send {
+trait CMZbp: Sync + Send {
     fn as_any(&self) -> &dyn Any;
 }
 
-impl<G: Group> CMZBP for CMZBasepoints<G> {
+impl<G: Group> CMZbp for CMZBasepoints<G> {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-// The StaticTypeMap mapping group types G to trait objects Box<dyn CMZBP>
+// The StaticTypeMap mapping group types G to trait objects Box<dyn CMZbp>
 lazy_static! {
-    static ref basepoints_map: StaticTypeMap<Box<dyn CMZBP>> = StaticTypeMap::new();
+    static ref basepoints_map: StaticTypeMap<Box<dyn CMZbp>> = StaticTypeMap::new();
 }
 
 /// For a given group type `G`, if `bp` is `Some(b)`, then load the
@@ -224,9 +224,9 @@ lazy_static! {
 /// `&'static CMZBasepoints<G>`.
 fn load_bp<G: Group>(bp: Option<CMZBasepoints<G>>) -> &'static CMZBasepoints<G> {
     match bp {
-        Some(b) => basepoints_map.call_once::<Box<dyn CMZBP>, _>(|| Box::new(b.clone())),
+        Some(b) => basepoints_map.call_once::<Box<dyn CMZbp>, _>(|| Box::new(b.clone())),
         None => {
-            basepoints_map.call_once::<Box<dyn CMZBP>, _>(|| panic!("basepoints uninitialized"))
+            basepoints_map.call_once::<Box<dyn CMZbp>, _>(|| panic!("basepoints uninitialized"))
         }
     }
     .as_any()
