@@ -14,7 +14,7 @@ use rand::RngCore;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
-pub use sigma_compiler;
+pub use sigma_compiler::{self};
 use sigma_compiler::*;
 use thiserror::Error;
 
