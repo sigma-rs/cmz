@@ -1,13 +1,13 @@
 [package]
 name = "cmz"
-version = "0.1.0-rc1"
+version = "0.1.0-rc2"
 edition = "2021"
 license = "MIT"
 repository = "https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz"
 description = "A crate to automatically create protocols that use CMZ14 or µCMZ credentials, by specifying an extremely compact description of the protocol."
 
 [dependencies]
-cmz-derive = "0.1.0-rc1"
+cmz-derive = "0.1.0-rc2"
 ff = "0.13"
 generic_static = "0.2"
 group = "0.13"
@@ -17,7 +17,7 @@ rand = "0.8.5"
 serde = { version = "1", features = [ "derive" ] }
 serde_bytes = "0.11"
 serde_with = "3"
-sigma-compiler = "0.1.0-rc1"
+sigma-compiler = "0.1.0-rc2"
 thiserror = "2"
 
 [dev-dependencies]

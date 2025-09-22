@@ -1,6 +1,6 @@
 [package]
 name = "cmz-derive"
-version = "0.1.0-rc1"
+version = "0.1.0-rc2"
 edition = "2021"
 license = "MIT"
 repository = "https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz"
@@ -10,7 +10,7 @@ description = "Derive macros for the cmz crate"
 proc-macro = true
 
 [dependencies]
-cmz-core = "0.1.0-rc1"
+cmz-core = "0.1.0-rc2"
 syn = { version = "2.0", features = ["extra-traits", "visit-mut"] }
 quote = "1.0"
 darling = "0.20"

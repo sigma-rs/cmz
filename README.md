@@ -1,5 +1,5 @@
 `cmz` by Ian Goldberg, iang@uwaterloo.ca  
-Version 0.1.0-rc1, 2025-09-16
+Version 0.1.0-rc2, 2025-09-22
 
 This crate is centred around the concept of _credentials_.  A credential
 contains:
