@@ -214,7 +214,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 
 [[package]]
 name = "cmz"
-version = "0.1.0-rc2"
+version = "0.1.0"
 dependencies = [
  "bincode",
  "cmz-derive",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "cmz-core"
-version = "0.1.0-rc2"
+version = "0.1.0"
 dependencies = [
  "clap",
  "darling",
@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "cmz-derive"
-version = "0.1.0-rc2"
+version = "0.1.0"
 dependencies = [
  "cmz-core",
  "darling",
@@ -907,9 +907,9 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "sigma-compiler"
-version = "0.1.0-rc2"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5916890ed39d5bb79e0c9f21043fd44fadd9387b58d52c033ffe61108ca5332"
+checksum = "736016d29725f54ee767083ded55e1ddf46b9aa081ae0005423c2b36587ea0be"
 dependencies = [
  "group",
  "rand",
@@ -920,9 +920,9 @@ dependencies = [
 
 [[package]]
 name = "sigma-compiler-core"
-version = "0.1.0-rc2"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc19242949b28e1efafe2bbd5f55c9db8b9cd7aaadbb797868aa7864bd405a97"
+checksum = "a6a96f60157d659e1f7ac2f04999490ca684cfc20c06a6de5aa5502880fa03b7"
 dependencies = [
  "clap",
  "prettyplease",
@@ -933,9 +933,9 @@ dependencies = [
 
 [[package]]
 name = "sigma-compiler-derive"
-version = "0.1.0-rc2"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6df1acaaf98084f800ba3583880bf708428c71a959a492664a1a1ff0f83af59"
+checksum = "7c11631f78f12c1eb5e424a6322f173f2ab37d2643de397fe605dfb9b06d4f86"
 dependencies = [
  "sigma-compiler-core",
  "syn 2.0.104",
