@@ -9,6 +9,7 @@
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
@@ -107,7 +108,7 @@ struct CredSpec<ShowOrIssue: Parse, const VALID_OPTIONAL: bool> {
     // show that this credential is valid.  The default state of false
     // means we should always show that the credential is valid.
     valid_optional: bool,
-    attrs: HashMap<Ident, ShowOrIssue>,
+    attrs: BTreeMap<Ident, ShowOrIssue>,
 }
 
 impl<ShowOrIssue: Parse + Copy, const VALID_OPTIONAL: bool> Parse
@@ -127,7 +128,7 @@ impl<ShowOrIssue: Parse + Copy, const VALID_OPTIONAL: bool> Parse
         braced!(content in input);
         let attrspecs: Punctuated<AttrSpec<ShowOrIssue>, Token![,]> =
             content.parse_terminated(AttrSpec::<ShowOrIssue>::parse, Token![,])?;
-        let mut attrs: HashMap<Ident, ShowOrIssue> = HashMap::new();
+        let mut attrs: BTreeMap<Ident, ShowOrIssue> = BTreeMap::new();
         for attrspec in attrspecs.iter() {
             attrs.insert(attrspec.attr.clone(), attrspec.spec);
         }
