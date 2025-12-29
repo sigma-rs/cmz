@@ -14,8 +14,8 @@ use rand::RngCore;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
-pub use sigma_compiler::{self};
 use sigma_compiler::*;
+pub use sigma_compiler::{self};
 use thiserror::Error;
 
 // We need wrappers for group::Group and ff::PrimeField elements to be
