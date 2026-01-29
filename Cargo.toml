@@ -22,6 +22,7 @@ thiserror = "2"
 
 [dev-dependencies]
 bincode = "1"
+chrono = "0.4"
 curve25519-dalek = { version = "4", features = [ "group", "rand_core", "digest" ] }
 sha2 = "0.10"
 
