@@ -29,3 +29,8 @@ sha2 = "0.10"
 [patch.crates-io]
 cmz-derive = { path = "cmz-derive" }
 cmz-core = { path = "cmz-core" }
+
+[features]
+# Dump (to stdout or to a string) the value of the instance on both the
+# prover's and verifier's side.  They should match.
+dump = [ "sigma-compiler/dump" ]
