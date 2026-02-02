@@ -39,7 +39,8 @@ use ff::PrimeField;
 use group::{Group, GroupEncoding};
 use serde::{
     self,
-    de::{Error as DError, Visitor},
+    de::{Error as DError, SeqAccess, Visitor},
+    ser::SerializeTuple,
     Deserializer, Serializer,
 };
 
@@ -89,7 +90,12 @@ where
     if s.is_human_readable() {
         s.serialize_str(&hex::encode(bytes.as_ref()))
     } else {
-        s.serialize_bytes(bytes.as_ref())
+        let bs = bytes.as_ref();
+        let mut tup = s.serialize_tuple(bs.len())?;
+        for b in bs {
+            tup.serialize_element(b)?;
+        }
+        tup.end()
     }
 }
 
@@ -125,31 +131,31 @@ fn deserialize_<'de, B: AsRef<[u8]> + AsMut<[u8]> + Default, D: Deserializer<'de
         }
         d.deserialize_str(StrVisitor(PhantomData))
     } else {
-        struct ByteVisitor<B: AsRef<[u8]> + AsMut<[u8]> + Default>(PhantomData<B>);
+        struct TupleVisitor<B: AsRef<[u8]> + AsMut<[u8]> + Default>(PhantomData<B>);
 
-        impl<'de, B> Visitor<'de> for ByteVisitor<B>
+        impl<'de, B> Visitor<'de> for TupleVisitor<B>
         where
             B: AsRef<[u8]> + AsMut<[u8]> + Default,
         {
             type Value = B;
 
             fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-                write!(f, "a {} byte", B::default().as_ref().len())
+                write!(f, "{} bytes", B::default().as_ref().len())
             }
 
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
             where
-                E: serde::de::Error,
+                A: SeqAccess<'de>,
             {
                 let mut repr = B::default();
-                if v.len() != repr.as_ref().len() {
-                    return Err(serde::de::Error::custom("invalid length"));
+                let reprbytes = repr.as_mut();
+                for b in reprbytes {
+                    *b = seq.next_element()?.expect("byte");
                 }
-                repr.as_mut().copy_from_slice(v);
                 Ok(repr)
             }
         }
 
-        d.deserialize_bytes(ByteVisitor(PhantomData))
+        d.deserialize_tuple(B::default().as_ref().len(), TupleVisitor(PhantomData))
     }
 }
