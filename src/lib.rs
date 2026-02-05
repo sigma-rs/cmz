@@ -325,6 +325,13 @@ where
     /// automatically be computed from the private key.
     fn set_privkey(&mut self, privkey: &CMZPrivkey<Self::Point>) -> &mut Self;
 
+    /// Set the private and public keys for this credential.
+    fn set_keypair(
+        &mut self,
+        privkey: &CMZPrivkey<Self::Point>,
+        pubkey: &CMZPubkey<Self::Point>,
+    ) -> &mut Self;
+
     /// Get a copy of the private key for this credential.  If the
     /// private key has not yet been set, a privkey with an empty x
     /// vector will be returned.

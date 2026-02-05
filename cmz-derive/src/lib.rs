@@ -112,6 +112,13 @@ fn impl_cmzcred_derive(ast: &syn::DeriveInput, group_ident: &Ident) -> TokenStre
                 self
             }
 
+            fn set_keypair(&mut self, privkey: &CMZPrivkey<Self::Point>,
+                    pubkey: &CMZPubkey<Self::Point>) -> &mut Self {
+                self.pubkey = pubkey.clone();
+                self.privkey = privkey.clone();
+                self
+            }
+
             fn get_privkey<'a> (&'a self) -> &'a CMZPrivkey<Self::Point> {
                 &self.privkey
             }
