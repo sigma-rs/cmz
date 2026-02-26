@@ -8,7 +8,9 @@ use core::any::Any;
 use ff::{Field, PrimeField};
 use generic_static::StaticTypeMap;
 use group::prime::PrimeGroup;
-use group::{Group, GroupEncoding, WnafBase, WnafScalar};
+use group::{Group, GroupEncoding};
+#[cfg(feature = "wnaf_is_constant_time")]
+use group::{WnafBase, WnafScalar};
 use lazy_static::lazy_static;
 use rand::RngCore;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -111,6 +113,7 @@ pub struct CMZPubkey<G: PrimeGroup> {
 
 // The size of the WNAF windows.  Larger sizes take more memory, but
 // result in faster multiplications.
+#[cfg(feature = "wnaf_is_constant_time")]
 const WNAF_SIZE: usize = 6;
 
 /// A struct (generic over G) holding the two CMZ bases, and their Wnaf
@@ -119,7 +122,9 @@ const WNAF_SIZE: usize = 6;
 pub struct CMZBasepoints<G: Group> {
     A_: G,
     B_: G,
+    #[cfg(feature = "wnaf_is_constant_time")]
     A_TABLE: WnafBase<G, WNAF_SIZE>,
+    #[cfg(feature = "wnaf_is_constant_time")]
     B_TABLE: WnafBase<G, WNAF_SIZE>,
 }
 
@@ -127,24 +132,40 @@ impl<G: Group> CMZBasepoints<G> {
     pub fn init(generator_A: G) -> Self {
         let A_ = generator_A;
         let B_ = G::generator();
+        #[cfg(feature = "wnaf_is_constant_time")]
         let A_TABLE = WnafBase::new(A_);
+        #[cfg(feature = "wnaf_is_constant_time")]
         let B_TABLE = WnafBase::new(B_);
         CMZBasepoints {
             A_,
             B_,
+            #[cfg(feature = "wnaf_is_constant_time")]
             A_TABLE,
+            #[cfg(feature = "wnaf_is_constant_time")]
             B_TABLE,
         }
     }
 
+    #[cfg(feature = "wnaf_is_constant_time")]
     pub fn mulA(&self, s: &G::Scalar) -> G {
         let wnaf_s = WnafScalar::<G::Scalar, WNAF_SIZE>::new(s);
         &self.A_TABLE * &wnaf_s
     }
 
+    #[cfg(feature = "wnaf_is_constant_time")]
     pub fn mulB(&self, s: &G::Scalar) -> G {
         let wnaf_s = WnafScalar::<G::Scalar, WNAF_SIZE>::new(s);
         &self.B_TABLE * &wnaf_s
+    }
+
+    #[cfg(not(feature = "wnaf_is_constant_time"))]
+    pub fn mulA(&self, s: &G::Scalar) -> G {
+        self.A_ * s
+    }
+
+    #[cfg(not(feature = "wnaf_is_constant_time"))]
+    pub fn mulB(&self, s: &G::Scalar) -> G {
+        self.B_ * s
     }
 
     pub fn keypairA(&self, rng: &mut impl RngCore) -> (G::Scalar, G) {

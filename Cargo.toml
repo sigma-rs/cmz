@@ -34,3 +34,6 @@ cmz-core = { path = "cmz-core" }
 # Dump (to stdout or to a string) the value of the instance on both the
 # prover's and verifier's side.  They should match.
 dump = [ "sigma-compiler/dump" ]
+# If the group::WnafBase multiplication implementation becomes constant
+# time (and faster than not using it), turn this on.
+wnaf_is_constant_time = []
