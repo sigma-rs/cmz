@@ -509,7 +509,9 @@ pub fn cmz_core(
             #iss_cred_id.set_pubkey(&self.#pubkey_cred);
         };
 
-        for (attr, &spec) in iss_cred.attrs.iter() {
+        let mut iss_attrs: Vec<_> = iss_cred.attrs.iter().collect();
+        iss_attrs.sort_by_key(|(attr, _)| attr.to_string());
+        for (attr, &spec) in iss_attrs {
             // String version of the attribute name
             let attr_str = attr.to_string();
 
@@ -1162,7 +1164,9 @@ pub fn cmz_core(
             let mut #q_cred = #q_init;
         };
 
-        for (attr, &spec) in show_cred.attrs.iter() {
+        let mut show_attrs: Vec<_> = show_cred.attrs.iter().collect();
+        show_attrs.sort_by_key(|(attr, _)| attr.to_string());
+        for (attr, &spec) in show_attrs {
             // String version of the attribute name
             let attr_str = attr.to_string();
 
