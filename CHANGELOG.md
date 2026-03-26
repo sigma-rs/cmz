@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constant time, and also in some cases slower than the regular
   multiplication (at least with Ristretto).
 
+## [0.2.1] - 2026-03-26
+
+### Fixes
+
+- Remembered to bump version number in README
 
 [0.1.0]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.1.0
 [0.2.0]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.2.0
+[0.2.1]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.2.1

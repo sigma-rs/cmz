@@ -366,7 +366,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 
 [[package]]
 name = "cmz"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bincode",
  "chrono",
@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "cmz-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "darling",
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "cmz-derive"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cmz-core",
  "darling",
@@ -1488,7 +1488,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "sigma-compiler"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "group",
  "rand 0.8.5",
@@ -1499,7 +1499,7 @@ dependencies = [
 
 [[package]]
 name = "sigma-compiler-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "prettyplease",
@@ -1510,7 +1510,7 @@ dependencies = [
 
 [[package]]
 name = "sigma-compiler-derive"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "sigma-compiler-core",
  "syn 2.0.104",
