@@ -17,7 +17,7 @@ rand = "0.8.5"
 serde = { version = "1", features = [ "derive" ] }
 serde_bytes = "0.11"
 serde_with = "3"
-sigma-compiler = "0.2.1"
+sigma-compiler = "0.2.2"
 thiserror = "2"
 
 [dev-dependencies]
@@ -29,11 +29,11 @@ sha2 = "0.10"
 [patch.crates-io]
 cmz-derive = { path = "cmz-derive" }
 cmz-core = { path = "cmz-core" }
-sigma-compiler = { path = "../sigma-compiler" }
-sigma-compiler-derive = { path = "../sigma-compiler/sigma-compiler-derive" }
-sigma-compiler-core = { path = "../sigma-compiler/sigma-compiler-core" }
-sigma-proofs = { path = "../sigma-proofs" }
-spongefish = { path = "../spongefish/spongefish" }
+# sigma-compiler = { path = "../sigma-compiler" }
+# sigma-compiler-derive = { path = "../sigma-compiler/sigma-compiler-derive" }
+# sigma-compiler-core = { path = "../sigma-compiler/sigma-compiler-core" }
+# sigma-proofs = { path = "../sigma-proofs" }
+# spongefish = { path = "../spongefish/spongefish" }
 
 [features]
 # Dump (to stdout or to a string) the value of the instance on both the
