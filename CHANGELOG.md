@@ -5,11 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2025-10-10
+## [0.2.1] - 2026-03-26
 
-### Added
+### Fixes
 
-- Initial release
+- Remembered to bump version number in README
 
 ## [0.2.0] - 2026-03-25
 
@@ -39,12 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constant time, and also in some cases slower than the regular
   multiplication (at least with Ristretto).
 
-## [0.2.1] - 2026-03-26
+## [0.1.0] - 2025-10-10
 
-### Fixes
+### Added
 
-- Remembered to bump version number in README
+- Initial release
 
-[0.1.0]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.1.0
-[0.2.0]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.2.0
 [0.2.1]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.2.1
+[0.2.0]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.2.0
+[0.1.0]: https://git-crysp.uwaterloo.ca/SigmaProtocol/cmz/src/0.1.0
